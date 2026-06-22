@@ -1,0 +1,64 @@
+1) Startup
+
+cd D:/UnityProjects/Unity-AR-TRIFFID/projects/TRIFFID
+python ./LocalScripts/local_geojson_server.py --host 127.0.0.1 --port 8080 --db ./LocalScripts/local_features.json
+
+Optional auto-move startup:
+python ./LocalScripts/local_geojson_server.py --host 127.0.0.1 --port 8080 --db ./LocalScripts/local_features.json --auto-move-after 5 --move-interval 1 --move-step-lat 0.00001 --move-step-lon 0.00002
+
+2) Production endpoints
+
+https://crispres.com/wp-json/map-manager/v1/features
+https://crispres.com/wp-json/observer-sync/v1/status
+https://crispres.com/wp-json/mqtt/v1/latest
+
+3) Local URLs
+
+http://127.0.0.1:8080/wp-json/map-manager/v1/features
+http://127.0.0.1:8080/wp-json/observer-sync/v1/status
+http://127.0.0.1:8080/wp-json/mqtt/v1/latest
+
+4) Initial observer status
+
+curl -X PATCH "http://127.0.0.1:8080/wp-json/observer-sync/v1/status" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"fe_updated\":0,\"mobile_updated\":0,\"ar_updated\":0}"
+
+5) Update observer from frontend
+
+curl -X PATCH "http://127.0.0.1:8080/wp-json/observer-sync/v1/status" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"fe_updated\":1}"
+
+6) Get MQTT latest
+
+curl "http://127.0.0.1:8080/wp-json/mqtt/v1/latest"
+
+7) Change UGV coordinates manually
+
+curl -X PATCH "http://127.0.0.1:8080/wp-json/mqtt/v1/latest" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"message\":{\"latitude\":49.7265,\"longitude\":13.3517}}"
+
+8) Enable auto movement
+
+curl -X PATCH "http://127.0.0.1:8080/wp-json/mqtt/v1/latest" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"motion\":{\"enabled\":true,\"start_after_sec\":5,\"interval_sec\":1,\"lat_step\":0.00001,\"lon_step\":0.00002}}"
+
+9) New point from server
+
+curl -X PUT "http://127.0.0.1:8080/wp-json/map-manager/v1/features" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"type\":\"Feature\",\"properties\":{\"class\":\"water\",\"id\":\"\",\"confidence\":0.6,\"category\":\"nature\",\"source\":\"FE\",\"altitude_m\":null},\"geometry\":{\"type\":\"Point\",\"coordinates\":[-105.00117380883478,39.626480534791995]}}"
+
+10) Update point from server
+
+curl -X PATCH "http://127.0.0.1:8080/wp-json/map-manager/v1/features/5" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"id\":\"5\",\"properties\":{\"class\":\"water\",\"id\":\"5\",\"confidence\":0.7,\"category\":\"nature\",\"source\":\"FE\",\"altitude_m\":12.34},\"geometry\":{\"type\":\"Point\",\"coordinates\":[-105.0011738,39.6264805,12.34]}}"
+
+11) Delete point from server
+
+curl -X DELETE "http://127.0.0.1:8080/wp-json/map-manager/v1/features/{id}"
+

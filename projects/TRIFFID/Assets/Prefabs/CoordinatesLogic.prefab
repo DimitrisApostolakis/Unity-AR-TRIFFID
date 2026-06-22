@@ -1,0 +1,168 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &4845071759467727531
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3610519095859535921}
+  - component: {fileID: 2978852571891603890}
+  - component: {fileID: 4770512395167160992}
+  - component: {fileID: 1682660547750338442}
+  - component: {fileID: 211811884089775981}
+  m_Layer: 0
+  m_Name: CoordinatesLogic
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3610519095859535921
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4845071759467727531}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0, y: 0, z: -0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2978852571891603890
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4845071759467727531}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c06b72a7e39e04c4fb275a09bd7e2ee1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GeoJsonApiManager
+  featuresUrl: https://crispres.com/wp-json/map-manager/v1/features
+  latestMqttUrl: https://crispres.com/wp-json/mqtt/v1/latest
+  requestTimeoutSeconds: 20
+  verboseLogs: 1
+  enableStatusPatchOnLocalUpdate: 1
+  statusUrl: https://crispres.com/wp-json/observer-sync/v1/status
+  statusPatchField: ar_updated
+  statusPatchValue: 1
+--- !u!114 &4770512395167160992
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4845071759467727531}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 721cec254cb31e0408288bff8464a2dc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::JsonSpawnerPersistenceAdapter
+  jsonSpawner: {fileID: 1682660547750338442}
+--- !u!114 &1682660547750338442
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4845071759467727531}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1b88cb84d8cbe4241a6bd8b99e15234b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SplatMapIconTester
+  geoJsonPath: Assets/Coordinates/GeoJSON.json
+  transformJsonPath: Assets/Scenes/Pilsen/Building/transform_colmap_to_enu.json
+  saveFilePath: Coordinates/GeoJSON_updated.json
+  saveInsideProjectFolder: 1
+  mapTransform: {fileID: 0}
+  nodePrefab: {fileID: 2293199729852364434, guid: fd6145406c77b394dbe622108ba7df3c, type: 3}
+  lineMaterial: {fileID: 0}
+  lineThickness: 0.01
+  colorPalette:
+  - {r: 0, g: 1, b: 1, a: 1}
+  - {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  - {r: 1, g: 0, b: 1, a: 1}
+  - {r: 0, g: 1, b: 0, a: 1}
+  prefabEntries:
+  - name: animal
+    prefab: {fileID: 310908253417621625, guid: 7c1bc58d2c16b8b4a83fefee3497ce5d, type: 3}
+  - name: citizen
+    prefab: {fileID: 7781739100444230078, guid: a15d70160cd349d41ab9ac73d1fbbc77, type: 3}
+  - name: debris
+    prefab: {fileID: 310908253417621625, guid: 63149498445c32a40a2a06360aae2635, type: 3}
+  - name: holes
+    prefab: {fileID: 310908253417621625, guid: 7c9fe59da568a4e44b4f91e2edde401c, type: 3}
+  - name: water
+    prefab: {fileID: 310908253417621625, guid: 573eabd9736c8ec41ac318963ba9eb44, type: 3}
+  - name: barrel
+    prefab: {fileID: 310908253417621625, guid: 63493d11f0a970c49937e45befa5f897, type: 3}
+  - name: fire
+    prefab: {fileID: 310908253417621625, guid: 310c519036973a344b68ccad28f51f40, type: 3}
+  - name: smoke
+    prefab: {fileID: 310908253417621625, guid: d84161c40672d2d408cc8fd7f8fadd45, type: 3}
+  - name: barrier
+    prefab: {fileID: 310908253417621625, guid: e1db16a9cb5787742afda9d5993fdebc, type: 3}
+  - name: mud
+    prefab: {fileID: 310908253417621625, guid: 2ee34d8010803284d92def21d4cd0f96, type: 3}
+  - name: ugv
+    prefab: {fileID: 310908253417621625, guid: 9c646ff95ca751647bd812ca66d48851, type: 3}
+  infoPanel: {fileID: 0}
+  enableAutoSaveTimer: 1
+  autoSaveIntervalSeconds: 3
+  startWithCollidersEnabled: 0
+  enableSurfaceSnapFallback: 1
+  surfaceSnapMask:
+    serializedVersion: 2
+    m_Bits: 128
+  surfaceSnapRayStartOffset: 25
+  surfaceSnapRayDistance: 100
+  surfaceSnapOffset: 0.01
+  surfaceSnapLift: 0.03
+  surfaceSnapTargetObject: {fileID: 0}
+  surfaceSnapSyncBehaviour: {fileID: 0}
+  autoActivateSurfaceForSnap: 1
+  restoreSurfaceActiveStateAfterSnap: 1
+--- !u!114 &211811884089775981
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4845071759467727531}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 26e6d18fcc5e9a34d98f51ae93d6d348, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GeoJsonSyncCoordinator
+  jsonSpawner: {fileID: 1682660547750338442}
+  apiManager: {fileID: 2978852571891603890}
+  loadFromServerOnEnable: 1
+  localScanIntervalSeconds: 0.25
+  updateDebounceSeconds: 0.5
+  maxRetries: 6
+  retryBaseDelaySeconds: 0.75
+  retryMaxDelaySeconds: 20
+  enableRemotePolling: 1
+  remotePollingIntervalSeconds: 5
+  enableLatestMqttPolling: 1
+  latestMqttPollingIntervalSeconds: 4
+  verboseLogs: 1
+  apiCallbackTimeoutSeconds: 25
+  resetArUpdatedAfterRemoteRefresh: 1
+  remoteRefreshStatusField: ar_updated
+  remoteRefreshStatusValue: 0
+  skipRefreshWhileManipulating: 1
+  localChangeGraceSeconds: 1.5
+  fetchOnlyWhenExternalUpdates: 1
+  fallbackToFetchWhenStatusUnavailable: 1
+  deduplicateFetchedFeatures: 1

@@ -1,0 +1,8 @@
+{
+  "productionFeaturesUrl": "https://crispres.com/wp-json/map-manager/v1/features",
+  "productionLatestMqttUrl": "https://crispres.com/wp-json/mqtt/v1/latest",
+  "productionStatusUrl": "https://crispres.com/wp-json/observer-sync/v1/status",
+  "localhostFeaturesUrl": "http://127.0.0.1:8080/wp-json/map-manager/v1/features",
+  "localhostLatestMqttUrl": "http://127.0.0.1:8080/wp-json/mqtt/v1/latest",
+  "localhostStatusUrl": "http://127.0.0.1:8080/wp-json/observer-sync/v1/status"
+}
