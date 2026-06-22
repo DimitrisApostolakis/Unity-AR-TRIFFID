@@ -217,7 +217,7 @@ If you use this work, the system, or parts of the implementation in academic or 
   eprint        = {2602.21874},
   archivePrefix = {arXiv},
   primaryClass  = {cs.HC},
-  url           = {https://arxiv.org/abs/2602.21874}
+  doi           = {https://arxiv.org/abs/2602.21874}
 }
 ```
 
