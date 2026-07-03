@@ -10,7 +10,6 @@ public class MapColliderSync : MonoBehaviour
     public Transform MeshColliderObject;
 
     [Header("Alignment")]
-    [Tooltip("Extra rotation correction για να ταιριάξει ο collider με το Gaussian Splat.")]
     [SerializeField] private Vector3 rotationOffsetEuler = new Vector3(123f, 0f, 0f);
 
     [SerializeField] private bool copyPositionFromMapRoot = true;
