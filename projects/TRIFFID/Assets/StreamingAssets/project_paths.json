@@ -1,3 +1,4 @@
 {
-  "colmap_aligner_transform_path": "\\\\10.100.55.11\\unity\\transform_colmap_to_enu.json"
+  "colmap_aligner_transform_path": "\\\\10.100.55.11\\unity\\transform_colmap_to_enu.json",
+  "mesh_path": "\\\\10.100.55.11\\unity\\mesh.obj"
 }
