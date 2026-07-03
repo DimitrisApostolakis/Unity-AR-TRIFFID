@@ -31,6 +31,11 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
     public string transformJsonPath = "colmap_to_unity_transform.json";
     public FilePathRoot inputPathRoot = FilePathRoot.StreamingAssets;
 
+    [Header("Shared Transform Path Config")]
+    public bool useSharedTransformPathJson = true;
+    public string sharedTransformPathsJsonFile = "project_paths.json";
+    public string transformPathJsonKey = "colmap_aligner_transform_path";
+
     [Header("Apply Behaviour")]
     public bool applyOnStart = true;
     public bool applyOnEnable = false;
@@ -146,6 +151,27 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
                 this
             );
         }
+    }
+
+    [ContextMenu("Validate Shared Transform Path")]
+    public void ValidateSharedTransformPath()
+    {
+        if (!TryResolveTransformJsonPath(out string resolvedTransformPath))
+        {
+            return;
+        }
+
+        bool exists = File.Exists(resolvedTransformPath);
+
+        Debug.Log(
+            "[ColmapGaussianRotationAligner] Shared Transform Path Validation\n" +
+            $"Use Shared Transform Path Json: {useSharedTransformPathJson}\n" +
+            $"Shared Config File: {sharedTransformPathsJsonFile}\n" +
+            $"Transform Path Json Key: {transformPathJsonKey}\n" +
+            $"Resolved Transform Path: {resolvedTransformPath}\n" +
+            $"Transform File Exists: {exists}",
+            this
+        );
     }
 
     [ContextMenu("Apply JSON Rotation")]
@@ -265,7 +291,7 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
     {
         loaded = default;
 
-        if (!TryResolveInputPath(transformJsonPath, inputPathRoot, out string resolvedPath))
+        if (!TryResolveTransformJsonPath(out string resolvedPath))
         {
             return false;
         }
@@ -493,6 +519,28 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
 
         rotation = Quaternion.LookRotation(zAxis.normalized, yAxis.normalized);
         return IsFinite(rotation);
+    }
+
+    private bool TryResolveTransformJsonPath(out string resolvedPath)
+    {
+        resolvedPath = null;
+
+        if (useSharedTransformPathJson)
+        {
+            if (!StreamingAssetsPathResolver.TryResolvePathFromStreamingAssetsJson(
+                    sharedTransformPathsJsonFile,
+                    transformPathJsonKey,
+                    out resolvedPath,
+                    out string error))
+            {
+                Debug.LogError("[ColmapGaussianRotationAligner] Failed to resolve shared transform path: " + error, this);
+                return false;
+            }
+
+            return true;
+        }
+
+        return TryResolveInputPath(transformJsonPath, inputPathRoot, out resolvedPath);
     }
 
     private bool TryResolveInputPath(string rawPath, FilePathRoot root, out string resolvedPath)

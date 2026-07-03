@@ -22,6 +22,11 @@ public class JsonSpawner : MonoBehaviour
     [Tooltip("Primary runtime GeoJSON save file. Relative paths use the save location selected below.")]
     public string saveFilePath = DefaultRelativeSavePath;
 
+    [Header("Shared Transform Path Config")]
+    [SerializeField] private bool useSharedTransformPathJson = true;
+    [SerializeField] private string sharedTransformPathsJsonFile = "project_paths.json";
+    [SerializeField] private string transformPathJsonKey = "json_spawner_transform_path";
+
     [Header("Save Location")]
     [Tooltip("When enabled, relative save paths resolve inside the Unity project folder instead of Application.persistentDataPath.")]
     [SerializeField] private bool saveInsideProjectFolder;
@@ -135,7 +140,7 @@ public class JsonSpawner : MonoBehaviour
         if (string.IsNullOrWhiteSpace(geoJsonPath))
             Debug.LogError("[JsonSpawner] GeoJSON input path is empty.", this);
 
-        if (string.IsNullOrWhiteSpace(transformJsonPath))
+        if (!useSharedTransformPathJson && string.IsNullOrWhiteSpace(transformJsonPath))
             Debug.LogError("[JsonSpawner] Transform config path is empty.", this);
 
         geoJsonPath = SanitizeGeoJsonPath(geoJsonPath);
@@ -335,7 +340,10 @@ public class JsonSpawner : MonoBehaviour
         loadedRoot = null;
         loadPath = string.Empty;
 
-        string resolvedTransformPath = ResolveJsonPathForRuntime(transformJsonPath);
+        string resolvedTransformPath = ResolveTransformJsonPathForRuntime();
+        if (string.IsNullOrWhiteSpace(resolvedTransformPath))
+            return false;
+
         if (!ValidateTransformConfigFile(resolvedTransformPath, true))
             return false;
 
@@ -1850,7 +1858,7 @@ public class JsonSpawner : MonoBehaviour
         if (transformData != null && transformData.colmap_to_enu != null && transformData.origin_wgs84 != null)
             return;
 
-        string resolvedPath = ResolveJsonPathForRuntime(transformJsonPath);
+        string resolvedPath = ResolveTransformJsonPathForRuntime();
         bool shouldLogValidation = !transformLoadWarningShown;
         if (!ValidateTransformConfigFile(resolvedPath, shouldLogValidation))
         {
@@ -1891,6 +1899,50 @@ public class JsonSpawner : MonoBehaviour
             return 0d;
 
         return transformData.origin_wgs84.alt;
+    }
+
+    private string ResolveTransformJsonPathForRuntime()
+    {
+        if (useSharedTransformPathJson)
+        {
+            if (!StreamingAssetsPathResolver.TryResolvePathFromStreamingAssetsJson(
+                    sharedTransformPathsJsonFile,
+                    transformPathJsonKey,
+                    out string resolvedPath,
+                    out string error))
+            {
+                Debug.LogError("[JsonSpawner] Failed to resolve shared transform path: " + error, this);
+                return string.Empty;
+            }
+
+            return resolvedPath;
+        }
+
+        return ResolveJsonPathForRuntime(transformJsonPath);
+    }
+
+    [ContextMenu("Validate Shared Transform Path")]
+    public void ValidateSharedTransformPath()
+    {
+        string resolvedTransformPath = ResolveTransformJsonPathForRuntime();
+
+        if (string.IsNullOrWhiteSpace(resolvedTransformPath))
+        {
+            Debug.LogError("[JsonSpawner] Resolved transform path is empty.", this);
+            return;
+        }
+
+        bool exists = File.Exists(resolvedTransformPath);
+
+        Debug.Log(
+            "[JsonSpawner] Shared Transform Path Validation\n" +
+            $"Use Shared Transform Path Json: {useSharedTransformPathJson}\n" +
+            $"Shared Config File: {sharedTransformPathsJsonFile}\n" +
+            $"Transform Path Json Key: {transformPathJsonKey}\n" +
+            $"Resolved Transform Path: {resolvedTransformPath}\n" +
+            $"Transform File Exists: {exists}",
+            this
+        );
     }
 
     private static string ResolveJsonPathForRuntime(string rawPath)
