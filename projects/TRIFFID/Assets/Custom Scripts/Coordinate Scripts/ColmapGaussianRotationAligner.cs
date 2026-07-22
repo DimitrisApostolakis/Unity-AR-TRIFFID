@@ -245,9 +245,6 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
             return;
         }
 
-        // IMPORTANT:
-        // This script touches ONLY the Gaussian Renderer localRotation.
-        // It never touches position or scale, and it never writes to the Map Mesh directly.
         gaussianRenderer.localRotation = finalRotation;
 
         if (logDetails)
@@ -499,7 +496,6 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
 
         float handedness = Vector3.Dot(Vector3.Cross(xAxis, yAxis), zAxis);
 
-        // If the matrix contains a reflection, choose a valid Unity rotation basis.
         if (handedness < 0f)
         {
             zAxis = -zAxis;

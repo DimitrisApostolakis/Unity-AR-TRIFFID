@@ -1,4 +1,5 @@
 {
   "colmap_aligner_transform_path": "\\\\10.100.55.11\\unity\\transform_colmap_to_enu.json",
+  "gaussian_splat_asset_path": "\\\\10.100.55.11\\unity\\splat.asset",
   "mesh_path": "\\\\10.100.55.11\\unity\\mesh.obj"
 }

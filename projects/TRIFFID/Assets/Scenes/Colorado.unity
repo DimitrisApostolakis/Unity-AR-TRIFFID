@@ -1171,7 +1171,19 @@ PrefabInstance:
     - target: {fileID: 3541648457060796286, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
       propertyPath: m_Asset
       value: 
-      objectReference: {fileID: 11400000, guid: 3a0edf610db5ba04bafab5c9c69e1886, type: 2}
+      objectReference: {fileID: 0}
+    - target: {fileID: 3541648457060796286, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
+      propertyPath: m_AssetPath
+      value: Assets/Scenes/Colorado/Colorado.asset
+      objectReference: {fileID: 0}
+    - target: {fileID: 3541648457060796286, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
+      propertyPath: m_LoadAssetFromPath
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3541648457060796286, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
+      propertyPath: m_UseSharedAssetPathJson
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3818954021026693851, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

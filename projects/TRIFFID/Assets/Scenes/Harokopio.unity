@@ -1180,6 +1180,22 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 486126910861787466, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3541648457060796286, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
+      propertyPath: m_Asset
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 3541648457060796286, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
+      propertyPath: m_LoadAssetFromPath
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3541648457060796286, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
+      propertyPath: m_UseSharedAssetPathJson
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3818954021026693851, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -1231,6 +1247,10 @@ PrefabInstance:
     - target: {fileID: 6173160617509925388, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
       propertyPath: m_Name
       value: Map Origin
+      objectReference: {fileID: 0}
+    - target: {fileID: 6173160617509925388, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7972005221489617567, guid: 2e60294079cf67447ba980b487adcc26, type: 3}
       propertyPath: m_IsActive
