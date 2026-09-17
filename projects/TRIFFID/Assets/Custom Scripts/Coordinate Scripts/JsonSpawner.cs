@@ -545,10 +545,8 @@ public class JsonSpawner : MonoBehaviour
             bool isPointFeature = IsPointFeature(mapping.parentFeature);
             bool storesVertexHeights = SupportsPerVertexHeight(mapping.parentFeature);
 
-            if (isPointFeature)
-                RefreshHeightAboveSurface(mapping.node, mapping.parentFeature, data);
-            else
-                RefreshHeightAboveSurface(mapping.node, null, data);
+            if (!mapping.isCentroid)
+                RefreshLiveHeightAboveSurface(data, mapping.node);
 
             if (!mapping.isCentroid && mapping.coordArray != null)
             {
@@ -1788,15 +1786,53 @@ public class JsonSpawner : MonoBehaviour
 
     public bool RefreshLiveHeightAboveSurface(PointData data, Transform sourceNode)
     {
-        if (data == null || sourceNode == null)
+        if (data == null || sourceNode == null || transformData == null)
             return false;
+
+        Transform parentRef = mapTransform != null ? mapTransform : transform;
+        Vector3 currentLocalPosition = GetStableMapLocalPosition(sourceNode, parentRef);
+        Vector3Double currentWgs = ColmapToWgs84(currentLocalPosition);
 
         bool previouslyKnown = data.hasHeightAboveSurface;
         double previousHeight = data.heightAboveSurface;
-        RefreshHeightAboveSurface(sourceNode, null, data, false);
+        double previousAltitude = data.altitude;
+
+        if (CanQuerySurfaceHeight() &&
+            TryCalculateHeightAboveSurface(sourceNode, parentRef, out double calculatedHeight))
+        {
+            data.heightAboveSurface = calculatedHeight;
+            data.hasHeightAboveSurface = true;
+        }
+        else if (previouslyKnown &&
+                 IsFiniteNumber(previousHeight) &&
+                 IsFiniteNumber(previousAltitude) &&
+                 IsFiniteNumber(currentWgs.alt))
+        {
+            // With the surface collider disabled, preserve the finalized raycast
+            // baseline and apply only the marker's altitude delta.
+            data.heightAboveSurface = Math.Max(
+                0d,
+                previousHeight + (currentWgs.alt - previousAltitude));
+            data.hasHeightAboveSurface = true;
+        }
+
+        data.latitude = currentWgs.lat;
+        data.longitude = currentWgs.lon;
+        data.altitude = currentWgs.alt;
 
         return data.hasHeightAboveSurface &&
                (!previouslyKnown || Math.Abs(data.heightAboveSurface - previousHeight) > 1e-4);
+    }
+
+    private bool CanQuerySurfaceHeight()
+    {
+        if (surfaceSnapTargetObject == null)
+            return true;
+
+        Collider targetCollider = ResolveSurfaceQueryCollider();
+        return targetCollider != null &&
+               targetCollider.enabled &&
+               targetCollider.gameObject.activeInHierarchy;
     }
 
     private bool RefreshHeightAboveSurface(Transform pointTransform, Feature feature, PointData data, bool notifyDataChanged = true)
@@ -1805,7 +1841,8 @@ public class JsonSpawner : MonoBehaviour
             return false;
 
         Transform parentRef = mapTransform != null ? mapTransform : transform;
-        if (TryCalculateHeightAboveSurface(pointTransform, parentRef, out double calculatedHeight))
+        if (CanQuerySurfaceHeight() &&
+            TryCalculateHeightAboveSurface(pointTransform, parentRef, out double calculatedHeight))
         {
             bool changed = !data.hasHeightAboveSurface || Math.Abs(data.heightAboveSurface - calculatedHeight) > 1e-4;
             float? previousStoredHeight = feature?.properties?.height_above_surface_m;
@@ -1844,9 +1881,7 @@ public class JsonSpawner : MonoBehaviour
         if (pointTransform == null || parentRef == null || transformData == null)
             return false;
 
-        // Height must follow the actual runtime transform. FloatingIcon.localMapPoint
-        // can be stale when another interactable/relay moves the marker.
-        Vector3 pointLocalPosition = parentRef.InverseTransformPoint(pointTransform.position);
+        Vector3 pointLocalPosition = GetStableMapLocalPosition(pointTransform, parentRef);
         Vector3 pointWorldPosition = parentRef.TransformPoint(pointLocalPosition);
         Vector3 castAxis = GetWorldAltitudeAxis(parentRef);
 
