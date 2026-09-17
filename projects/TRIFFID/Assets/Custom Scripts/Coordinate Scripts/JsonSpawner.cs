@@ -42,6 +42,9 @@ public class JsonSpawner : MonoBehaviour
     [SerializeField] private string sharedSavePathsJsonFile = "project_paths.json";
     [SerializeField] private string savePathJsonKey = "geojson_save_path";
 
+    [SerializeField, HideInInspector] private bool saveInsideProjectFolder;
+    [SerializeField, HideInInspector] private bool savePathRootMigrationApplied;
+
     [Header("Map Parent (Optional)")]
     [Tooltip("Optional parent transform for spawned map annotations. The JsonSpawner transform is used when this is not assigned.")]
     public Transform mapTransform;
@@ -146,8 +149,26 @@ public class JsonSpawner : MonoBehaviour
 
     private List<NodeMapping> nodeMappings = new List<NodeMapping>();
 
+    private void OnValidate()
+    {
+        MigrateLegacySavePathRoot();
+    }
+
+    private void MigrateLegacySavePathRoot()
+    {
+        if (savePathRootMigrationApplied)
+            return;
+
+        saveOutputPathRoot = saveInsideProjectFolder
+            ? ProjectPathResolver.PathRoot.ProjectRoot
+            : ProjectPathResolver.PathRoot.PersistentDataPath;
+        savePathRootMigrationApplied = true;
+    }
+
     private void Awake()
     {
+        MigrateLegacySavePathRoot();
+
         if (string.IsNullOrWhiteSpace(geoJsonPath))
             Debug.LogError("[JsonSpawner] GeoJSON input path is empty.", this);
 
