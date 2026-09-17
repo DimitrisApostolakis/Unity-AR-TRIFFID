@@ -6,6 +6,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
     private PointData pointData;
     private UnityEngine.XR.Interaction.Toolkit.Interactables.XRBaseInteractable interactable;
     private JsonSpawner jsonSpawner;
+    private FloatingIcon floatingIcon;
     private bool isManipulating;
     private bool subscribed;
     [SerializeField, Min(0.01f)] private float liveUpdateInterval = 0.1f;
@@ -22,6 +23,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
     private void Awake()
     {
         pointData = GetComponent<PointData>();
+        floatingIcon = GetComponent<FloatingIcon>();
         if (pointData == null)
             LogMissingPointDataOnce();
         TrySubscribe(false);
@@ -167,6 +169,18 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
 
         Transform mapRef = jsonSpawner.mapTransform != null ? jsonSpawner.mapTransform : jsonSpawner.transform;
         Vector3 currentMapLocal = mapRef.InverseTransformPoint(transform.position);
+
+        // Keep FloatingIcon's cached map position aligned with the transform so a
+        // later SyncWorldToJSON cannot restore stale coordinates or stale height.
+        if (floatingIcon == null)
+            floatingIcon = GetComponent<FloatingIcon>();
+
+        if (floatingIcon != null)
+        {
+            floatingIcon.mainMap = mapRef;
+            floatingIcon.localMapPoint = currentMapLocal;
+        }
+
         JsonSpawner.Vector3Double wgs = jsonSpawner.ColmapToWgs84(currentMapLocal);
 
         pointData.latitude = wgs.lat;
