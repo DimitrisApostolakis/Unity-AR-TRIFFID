@@ -26,6 +26,30 @@ public class XRControllerLogger : MonoBehaviour
     public enum InteractionState { Navigation, DrawingSinglePoint, DrawingLine, DrawingPolygon }
     public enum PolygonCategory { Safe, Unsafe }
 
+    public static string GetPolygonClassName(PolygonCategory category)
+    {
+        return category.ToString().ToLowerInvariant();
+    }
+
+    public static bool TryNormalizePolygonClass(string className, out string normalizedClass)
+    {
+        normalizedClass = string.Empty;
+        if (string.IsNullOrWhiteSpace(className))
+            return false;
+
+        foreach (PolygonCategory category in Enum.GetValues(typeof(PolygonCategory)))
+        {
+            string candidate = GetPolygonClassName(category);
+            if (!string.Equals(className.Trim(), candidate, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            normalizedClass = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
     [Serializable]
     private class SecondaryMenuEntry
     {
@@ -917,7 +941,7 @@ public class XRControllerLogger : MonoBehaviour
         {
             Color lineColor = activeLine.StrokeColor;
             string featureClass = BuildDrawingClassName(lineColor);
-            string polygonClass = currentPolygonCategory == PolygonCategory.Unsafe ? "unsafe" : "safe";
+            string polygonClass = GetPolygonClassName(currentPolygonCategory);
             string polygonCategory = "navigation";
             string featureId = polygonMode
                 ? _persistence?.SavePolygon(positions, polygonClass, polygonCategory, lineColor)
@@ -998,7 +1022,7 @@ public class XRControllerLogger : MonoBehaviour
 
             pd.lineColorHex = "#" + ColorUtility.ToHtmlStringRGB(lineColor);
             pd.pointClass = line != null && line.IsPolygon
-                ? (currentPolygonCategory == PolygonCategory.Unsafe ? "unsafe" : "safe")
+                ? GetPolygonClassName(currentPolygonCategory)
                 : "road";
             pd.pointID = featureId;
             pd.category = "navigation";
