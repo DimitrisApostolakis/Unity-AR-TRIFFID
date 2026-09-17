@@ -11,6 +11,12 @@ using UnityEngine.Networking;
 public class GeoJsonApiManager : MonoBehaviour
 {
     private const string ApiEndpointsFileName = "api-endpoints.json";
+    private const string DefaultProductionFeaturesUrl = "https://crispres.com/wp-json/map-manager/v1/features";
+    private const string DefaultProductionLatestMqttUrl = "https://crispres.com/wp-json/mqtt/v1/latest";
+    private const string DefaultProductionStatusUrl = "https://crispres.com/wp-json/observer-sync/v1/status";
+    private const string DefaultLocalhostFeaturesUrl = "http://127.0.0.1:8080/wp-json/map-manager/v1/features";
+    private const string DefaultLocalhostLatestMqttUrl = "http://127.0.0.1:8080/wp-json/mqtt/v1/latest";
+    private const string DefaultLocalhostStatusUrl = "http://127.0.0.1:8080/wp-json/observer-sync/v1/status";
 
     [Serializable]
     public class ObserverSyncStatus
@@ -56,8 +62,8 @@ public class GeoJsonApiManager : MonoBehaviour
     [Tooltip("Value written to the configured observer-status field after a local update.")]
     [SerializeField] private int statusPatchValue = 1;
 
-    private ApiEndpointsConfig apiEndpointsConfig;
-    private bool apiConfigLoaded;
+    private ApiEndpointsConfig apiEndpointsConfig = CreateDefaultEndpointsConfig();
+    private bool apiConfigLoaded = true;
     private bool latestMqttEndpointValidationCompleted;
     private bool statusEndpointValidationCompleted;
 
@@ -125,20 +131,22 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private void LoadApiEndpointsConfig()
     {
-        apiEndpointsConfig = new ApiEndpointsConfig();
+        ApiEndpointsConfig defaults = CreateDefaultEndpointsConfig();
+        apiEndpointsConfig = defaults;
+        apiConfigLoaded = true;
 
         string configPath = Path.Combine(Application.streamingAssetsPath, ApiEndpointsFileName);
         string extension = Path.GetExtension(configPath);
         if (!string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase))
         {
             string displayedExtension = string.IsNullOrEmpty(extension) ? "<none>" : extension;
-            Debug.LogError($"[GeoJsonApiManager] Invalid API config file type. Expected .json, got {displayedExtension}: {configPath}", this);
+            Debug.LogWarning($"[GeoJsonApiManager] Invalid API config file type. Expected .json, got {displayedExtension}: {configPath}. Using built-in endpoints.", this);
             return;
         }
 
         if (!File.Exists(configPath))
         {
-            Debug.LogError($"[GeoJsonApiManager] API config file not found: {configPath}", this);
+            Debug.LogWarning($"[GeoJsonApiManager] API config file not found: {configPath}. Using built-in endpoints.", this);
             return;
         }
 
@@ -147,20 +155,60 @@ public class GeoJsonApiManager : MonoBehaviour
             ApiEndpointsConfig loadedConfig = JsonConvert.DeserializeObject<ApiEndpointsConfig>(File.ReadAllText(configPath));
             if (loadedConfig == null)
             {
-                Debug.LogError($"[GeoJsonApiManager] API config parsed to null: {configPath}", this);
+                Debug.LogWarning($"[GeoJsonApiManager] API config parsed to null: {configPath}. Using built-in endpoints.", this);
                 return;
             }
 
-            apiEndpointsConfig = loadedConfig;
-            apiConfigLoaded = true;
+            apiEndpointsConfig = new ApiEndpointsConfig
+            {
+                productionFeaturesUrl = ResolveConfiguredEndpoint("productionFeaturesUrl", loadedConfig.productionFeaturesUrl, defaults.productionFeaturesUrl),
+                productionLatestMqttUrl = ResolveConfiguredEndpoint("productionLatestMqttUrl", loadedConfig.productionLatestMqttUrl, defaults.productionLatestMqttUrl),
+                productionStatusUrl = ResolveConfiguredEndpoint("productionStatusUrl", loadedConfig.productionStatusUrl, defaults.productionStatusUrl),
+                localhostFeaturesUrl = ResolveConfiguredEndpoint("localhostFeaturesUrl", loadedConfig.localhostFeaturesUrl, defaults.localhostFeaturesUrl),
+                localhostLatestMqttUrl = ResolveConfiguredEndpoint("localhostLatestMqttUrl", loadedConfig.localhostLatestMqttUrl, defaults.localhostLatestMqttUrl),
+                localhostStatusUrl = ResolveConfiguredEndpoint("localhostStatusUrl", loadedConfig.localhostStatusUrl, defaults.localhostStatusUrl)
+            };
 
             if (verboseLogs)
-                Debug.Log($"[GeoJsonApiManager] Loaded API config from {configPath}.");
+            {
+                string environmentName = useLocalhost ? "localhost" : "production";
+                Debug.Log($"[GeoJsonApiManager] Loaded API config from {configPath}. Active environment: {environmentName}; features URL: {GetFeaturesUrl()}", this);
+            }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[GeoJsonApiManager] Failed to parse API config '{configPath}': {ex.Message}", this);
+            Debug.LogWarning($"[GeoJsonApiManager] Failed to parse API config '{configPath}': {ex.Message}. Using built-in endpoints.", this);
         }
+    }
+
+    private static ApiEndpointsConfig CreateDefaultEndpointsConfig()
+    {
+        return new ApiEndpointsConfig
+        {
+            productionFeaturesUrl = DefaultProductionFeaturesUrl,
+            productionLatestMqttUrl = DefaultProductionLatestMqttUrl,
+            productionStatusUrl = DefaultProductionStatusUrl,
+            localhostFeaturesUrl = DefaultLocalhostFeaturesUrl,
+            localhostLatestMqttUrl = DefaultLocalhostLatestMqttUrl,
+            localhostStatusUrl = DefaultLocalhostStatusUrl
+        };
+    }
+
+    private string ResolveConfiguredEndpoint(string endpointName, string configuredValue, string fallbackValue)
+    {
+        string normalizedValue = NormalizeUrlBase(configuredValue);
+        if (IsValidHttpEndpoint(normalizedValue))
+            return normalizedValue;
+
+        string normalizedFallback = NormalizeUrlBase(fallbackValue);
+        Debug.LogWarning($"[GeoJsonApiManager] Invalid {endpointName} in {ApiEndpointsFileName}; using built-in endpoint {normalizedFallback}.", this);
+        return normalizedFallback;
+    }
+
+    private void EnsureApiEndpointsLoaded()
+    {
+        if (apiEndpointsConfig == null || !apiConfigLoaded)
+            LoadApiEndpointsConfig();
     }
 
     private void ValidateConfiguration()
@@ -202,25 +250,71 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private bool ValidateEndpoint(string endpointName, string value)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (IsValidHttpEndpoint(value))
+            return true;
+
+        string displayedValue = string.IsNullOrWhiteSpace(value) ? "<empty>" : value;
+        Debug.LogError($"[GeoJsonApiManager] Invalid API endpoint URL for {endpointName}: {displayedValue}", this);
+        return false;
+    }
+
+    private bool TryGetRequestUrl(string endpointName, string resolvedValue, out string url, out string error)
+    {
+        url = NormalizeUrlBase(resolvedValue);
+        if (IsValidHttpEndpoint(url))
         {
-            Debug.LogError($"[GeoJsonApiManager] Invalid {endpointName} in {ApiEndpointsFileName}: value is empty.", this);
-            return false;
+            error = null;
+            return true;
         }
 
-        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-        {
-            Debug.LogError($"[GeoJsonApiManager] Invalid API endpoint URL for {endpointName}: {value}", this);
-            return false;
-        }
+        string displayedValue = string.IsNullOrWhiteSpace(url) ? "<empty>" : url;
+        error = $"Invalid API endpoint URL for {endpointName}: {displayedValue}. Request was not sent.";
+        Debug.LogError($"[GeoJsonApiManager] {error}", this);
+        return false;
+    }
 
-        return true;
+    private bool TryGetFeaturesRequestUrl(out string url, out string error)
+    {
+        return TryGetRequestUrl(
+            GetSelectedEndpointName("productionFeaturesUrl", "localhostFeaturesUrl"),
+            GetFeaturesUrl(),
+            out url,
+            out error);
+    }
+
+    private bool TryGetLatestMqttRequestUrl(out string url, out string error)
+    {
+        return TryGetRequestUrl(
+            GetSelectedEndpointName("productionLatestMqttUrl", "localhostLatestMqttUrl"),
+            GetLatestMqttUrl(),
+            out url,
+            out error);
+    }
+
+    private bool TryGetStatusRequestUrl(out string url, out string error)
+    {
+        return TryGetRequestUrl(
+            GetSelectedEndpointName("productionStatusUrl", "localhostStatusUrl"),
+            GetStatusUrl(),
+            out url,
+            out error);
+    }
+
+    private static bool IsValidHttpEndpoint(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+               && Uri.TryCreate(value, UriKind.Absolute, out Uri uri)
+               && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
 
     private IEnumerator FetchAllFeaturesCoroutine(Action<bool, string, Root> callback)
     {
-        string collectionUrl = GetFeaturesUrl();
+        if (!TryGetFeaturesRequestUrl(out string collectionUrl, out string endpointError))
+        {
+            callback?.Invoke(false, endpointError, null);
+            yield break;
+        }
+
         using (UnityWebRequest request = UnityWebRequest.Get(collectionUrl))
         {
             request.timeout = Mathf.Max(1, requestTimeoutSeconds);
@@ -260,10 +354,9 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private IEnumerator FetchLatestMqttStatusCoroutine(Action<bool, string, MqttLatestResponse> callback)
     {
-        string resolvedUrl = GetLatestMqttUrl();
-        if (string.IsNullOrWhiteSpace(resolvedUrl))
+        if (!TryGetLatestMqttRequestUrl(out string resolvedUrl, out string endpointError))
         {
-            callback?.Invoke(false, "Latest MQTT URL is empty", null);
+            callback?.Invoke(false, endpointError, null);
             yield break;
         }
 
@@ -300,7 +393,12 @@ public class GeoJsonApiManager : MonoBehaviour
             yield break;
         }
 
-        string collectionUrl = GetFeaturesUrl();
+        if (!TryGetFeaturesRequestUrl(out string collectionUrl, out string endpointError))
+        {
+            callback?.Invoke(false, endpointError, null);
+            yield break;
+        }
+
         string payload = JsonConvert.SerializeObject(feature, Formatting.None);
         using (UnityWebRequest request = BuildRequest(collectionUrl, "PUT", payload))
         {
@@ -330,7 +428,13 @@ public class GeoJsonApiManager : MonoBehaviour
             yield break;
         }
 
-        string url = BuildFeatureItemUrl(GetFeaturesUrl(), id);
+        if (!TryGetFeaturesRequestUrl(out string collectionUrl, out string endpointError))
+        {
+            callback?.Invoke(false, endpointError);
+            yield break;
+        }
+
+        string url = BuildFeatureItemUrl(collectionUrl, id);
         JObject patch = new JObject();
 
         if (feature.geometry != null)
@@ -365,7 +469,13 @@ public class GeoJsonApiManager : MonoBehaviour
             yield break;
         }
 
-        string url = BuildFeatureItemUrl(GetFeaturesUrl(), id);
+        if (!TryGetFeaturesRequestUrl(out string collectionUrl, out string endpointError))
+        {
+            callback?.Invoke(false, endpointError);
+            yield break;
+        }
+
+        string url = BuildFeatureItemUrl(collectionUrl, id);
         using (UnityWebRequest request = UnityWebRequest.Delete(url))
         {
             request.timeout = Mathf.Max(1, requestTimeoutSeconds);
@@ -384,10 +494,9 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private IEnumerator GetCurrentStatusCoroutine(Action<bool, string, ObserverSyncStatus> callback)
     {
-        string resolvedStatusUrl = GetStatusUrl();
-        if (string.IsNullOrWhiteSpace(resolvedStatusUrl))
+        if (!TryGetStatusRequestUrl(out string resolvedStatusUrl, out string endpointError))
         {
-            callback?.Invoke(false, "Status URL is empty", null);
+            callback?.Invoke(false, endpointError, null);
             yield break;
         }
 
@@ -417,10 +526,9 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private IEnumerator PatchCurrentStatusFieldCoroutine(string fieldName, int value, Action<bool, string, ObserverSyncStatus> callback)
     {
-        string resolvedStatusUrl = GetStatusUrl();
-        if (string.IsNullOrWhiteSpace(resolvedStatusUrl))
+        if (!TryGetStatusRequestUrl(out string resolvedStatusUrl, out string endpointError))
         {
-            callback?.Invoke(false, "Status URL is empty", null);
+            callback?.Invoke(false, endpointError, null);
             yield break;
         }
 
@@ -467,10 +575,9 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private IEnumerator PatchCurrentStatusFlagsCoroutine(int feUpdated, int mobileUpdated, int arUpdated, Action<bool, string, ObserverSyncStatus> callback)
     {
-        string resolvedStatusUrl = GetStatusUrl();
-        if (string.IsNullOrWhiteSpace(resolvedStatusUrl))
+        if (!TryGetStatusRequestUrl(out string resolvedStatusUrl, out string endpointError))
         {
-            callback?.Invoke(false, "Status URL is empty", null);
+            callback?.Invoke(false, endpointError, null);
             yield break;
         }
 
@@ -525,6 +632,8 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private string GetFeaturesUrl()
     {
+        EnsureApiEndpointsLoaded();
+
         string resolvedUrl = useLocalhost
             ? apiEndpointsConfig?.localhostFeaturesUrl
             : apiEndpointsConfig?.productionFeaturesUrl;
@@ -534,6 +643,8 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private string GetLatestMqttUrl()
     {
+        EnsureApiEndpointsLoaded();
+
         string resolvedUrl = useLocalhost
             ? apiEndpointsConfig?.localhostLatestMqttUrl
             : apiEndpointsConfig?.productionLatestMqttUrl;
@@ -543,6 +654,8 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private string GetStatusUrl()
     {
+        EnsureApiEndpointsLoaded();
+
         string resolvedUrl = useLocalhost
             ? apiEndpointsConfig?.localhostStatusUrl
             : apiEndpointsConfig?.productionStatusUrl;
