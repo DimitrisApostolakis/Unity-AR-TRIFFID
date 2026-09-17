@@ -225,7 +225,17 @@ public class JsonSpawner : MonoBehaviour
     private bool HasSupportedPolygonClass(Feature feature, out string className)
     {
         className = feature?.properties?.className?.Trim() ?? string.Empty;
+
+        if (IsDrawablePolygonClass(className))
+            return true;
+
         return TryGetPrefabForClass(className, out _);
+    }
+
+    private static bool IsDrawablePolygonClass(string className)
+    {
+        return string.Equals(className, "safe", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(className, "unsafe", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizePrefabToken(string value)
