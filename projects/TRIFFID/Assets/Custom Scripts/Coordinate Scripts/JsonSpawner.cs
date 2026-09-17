@@ -117,6 +117,7 @@ public class JsonSpawner : MonoBehaviour
     private bool latestMqttAltitudeCached;
     private double latestMqttCachedAltitude;
     private string resolvedSaveFilePath;
+    private Collider surfaceQueryCollider;
 
     private class LineData {
         public LineRenderer renderer;
@@ -1078,7 +1079,8 @@ public class JsonSpawner : MonoBehaviour
                 if (IsPointFeature(mapping.parentFeature))
                 {
                     PointData pointData = mapping.node.GetComponent<PointData>();
-                    RefreshHeightAboveSurface(mapping.node, mapping.parentFeature, pointData);
+                    if (pointData != null && pointData.hasHeightAboveSurface)
+                        mapping.parentFeature.properties.height_above_surface_m = (float)pointData.heightAboveSurface;
                 }
             }
 
@@ -1695,7 +1697,20 @@ public class JsonSpawner : MonoBehaviour
         }
     }
 
-    private bool RefreshHeightAboveSurface(Transform pointTransform, Feature feature, PointData data)
+    public bool RefreshLiveHeightAboveSurface(PointData data, Transform sourceNode)
+    {
+        if (data == null || sourceNode == null)
+            return false;
+
+        bool previouslyKnown = data.hasHeightAboveSurface;
+        double previousHeight = data.heightAboveSurface;
+        RefreshHeightAboveSurface(sourceNode, null, data, false);
+
+        return data.hasHeightAboveSurface &&
+               (!previouslyKnown || Math.Abs(data.heightAboveSurface - previousHeight) > 1e-4);
+    }
+
+    private bool RefreshHeightAboveSurface(Transform pointTransform, Feature feature, PointData data, bool notifyDataChanged = true)
     {
         if (pointTransform == null || data == null)
             return false;
@@ -1713,7 +1728,7 @@ public class JsonSpawner : MonoBehaviour
             if (feature?.properties != null)
                 feature.properties.height_above_surface_m = (float)calculatedHeight;
 
-            if (changed)
+            if (changed && notifyDataChanged)
                 data.NotifyDataChanged();
 
             return featureChanged;
@@ -1728,7 +1743,7 @@ public class JsonSpawner : MonoBehaviour
         data.heightAboveSurface = fallbackHeight;
         data.hasHeightAboveSurface = true;
 
-        if (fallbackChanged)
+        if (fallbackChanged && notifyDataChanged)
             data.NotifyDataChanged();
 
         return false;
@@ -1744,52 +1759,59 @@ public class JsonSpawner : MonoBehaviour
         Vector3 pointWorldPosition = parentRef.TransformPoint(pointLocalPosition);
         Vector3 castAxis = parentRef.up.sqrMagnitude > 1e-6f ? parentRef.up.normalized : Vector3.up;
 
-        bool activatedSurfaceForSnap = false;
-        PrepareSurfaceForSnap(ref activatedSurfaceForSnap);
+        bool activatedSurfaceForQuery = false;
+        PrepareSurfaceForSnap(ref activatedSurfaceForQuery);
 
-        try
+        // Height is sampled repeatedly while a marker is manipulated. Keep the hidden
+        // collider target active after the first query so its mesh is not reloaded each time.
+        float rayStartOffset = Mathf.Max(0.25f, surfaceSnapRayStartOffset);
+        float rayDistance = Mathf.Max(rayStartOffset + 0.5f, surfaceSnapRayDistance);
+
+        if (!TryRaycastSurfaceBelow(pointWorldPosition, castAxis, rayStartOffset, rayDistance, out Vector3 surfaceWorldPosition))
         {
-            float rayStartOffset = Mathf.Max(0.25f, surfaceSnapRayStartOffset);
-            float rayDistance = Mathf.Max(rayStartOffset + 0.5f, surfaceSnapRayDistance);
-
-            if (!TryRaycastSurfaceBelow(pointWorldPosition, castAxis, rayStartOffset, rayDistance, out Vector3 surfaceWorldPosition))
-            {
-                float extendedStartOffset = Mathf.Max(rayStartOffset * 8f, 250f);
-                float extendedDistance = Mathf.Max(rayDistance * 16f, 2000f);
-                if (!TryRaycastSurfaceBelow(pointWorldPosition, castAxis, extendedStartOffset, extendedDistance, out surfaceWorldPosition))
-                    return false;
-            }
-
-            Vector3 surfaceLocalPosition = parentRef.InverseTransformPoint(surfaceWorldPosition);
-            Vector3Double pointWgs = ColmapToWgs84(pointLocalPosition);
-            Vector3Double surfaceWgs = ColmapToWgs84(surfaceLocalPosition);
-            double height = pointWgs.alt - surfaceWgs.alt;
-
-            if (!IsFiniteNumber(height))
+            float extendedStartOffset = Mathf.Max(rayStartOffset * 8f, 250f);
+            float extendedDistance = Mathf.Max(rayDistance * 16f, 2000f);
+            if (!TryRaycastSurfaceBelow(pointWorldPosition, castAxis, extendedStartOffset, extendedDistance, out surfaceWorldPosition))
                 return false;
+        }
 
-            heightAboveSurface = Math.Max(0d, height);
-            return true;
-        }
-        finally
-        {
-            if (activatedSurfaceForSnap && restoreSurfaceActiveStateAfterSnap && surfaceSnapTargetObject != null)
-                surfaceSnapTargetObject.SetActive(false);
-        }
+        Vector3 surfaceLocalPosition = parentRef.InverseTransformPoint(surfaceWorldPosition);
+        Vector3Double pointWgs = ColmapToWgs84(pointLocalPosition);
+        Vector3Double surfaceWgs = ColmapToWgs84(surfaceLocalPosition);
+        double height = pointWgs.alt - surfaceWgs.alt;
+
+        if (!IsFiniteNumber(height))
+            return false;
+
+        heightAboveSurface = Math.Max(0d, height);
+        return true;
     }
 
     private bool TryRaycastSurfaceBelow(Vector3 pointWorldPosition, Vector3 castAxis, float rayStartOffset, float rayDistance, out Vector3 surfaceWorldPosition)
     {
         surfaceWorldPosition = pointWorldPosition;
         Vector3 origin = pointWorldPosition + castAxis * Mathf.Max(0.25f, rayStartOffset);
-        RaycastHit[] hits = Physics.RaycastAll(
-            origin,
-            -castAxis,
-            Mathf.Max(0.5f, rayDistance),
-            surfaceSnapMask,
-            QueryTriggerInteraction.Ignore
-        );
+        Ray ray = new Ray(origin, -castAxis);
+        float distance = Mathf.Max(0.5f, rayDistance);
 
+        if (surfaceSnapTargetObject != null)
+        {
+            Collider targetCollider = ResolveSurfaceQueryCollider();
+            if (targetCollider == null || !targetCollider.enabled || !targetCollider.gameObject.activeInHierarchy)
+                return false;
+
+            if (!targetCollider.Raycast(ray, out RaycastHit targetHit, distance))
+                return false;
+
+            double signedTargetHeight = Vector3.Dot(pointWorldPosition - targetHit.point, castAxis);
+            if (signedTargetHeight < -1e-4)
+                return false;
+
+            surfaceWorldPosition = targetHit.point;
+            return true;
+        }
+
+        RaycastHit[] hits = Physics.RaycastAll(ray, distance, surfaceSnapMask, QueryTriggerInteraction.Ignore);
         if (hits == null || hits.Length == 0)
             return false;
 
@@ -1808,6 +1830,17 @@ public class JsonSpawner : MonoBehaviour
         }
 
         return false;
+    }
+
+    private Collider ResolveSurfaceQueryCollider()
+    {
+        if (surfaceQueryCollider != null)
+            return surfaceQueryCollider;
+
+        if (surfaceSnapTargetObject != null)
+            surfaceQueryCollider = surfaceSnapTargetObject.GetComponentInChildren<Collider>(true);
+
+        return surfaceQueryCollider;
     }
 
     private bool IsValidSurfaceCollider(Collider candidate)
@@ -1862,6 +1895,8 @@ public class JsonSpawner : MonoBehaviour
             surfaceSnapSyncBehaviour.SendMessage("SyncToMap", SendMessageOptions.DontRequireReceiver);
         else if (surfaceSnapTargetObject != null)
             surfaceSnapTargetObject.SendMessage("SyncToMap", SendMessageOptions.DontRequireReceiver);
+
+        Physics.SyncTransforms();
     }
 
     private void SpawnLinePath(JArray lineToken, Feature feature, Color color, Transform customParent)
