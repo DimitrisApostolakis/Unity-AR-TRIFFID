@@ -186,6 +186,7 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
         myPointData.latitude = wgs.lat;
         myPointData.longitude = wgs.lon;
         myPointData.altitude = wgs.alt;
+        mySpawner.RefreshLiveHeightAboveSurface(myPointData, transform);
 
         myPointData.NotifyDataChanged();
         if (infoPanel != null && !infoPanel.IsObservingMarker(myPointData))
@@ -260,10 +261,7 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
     void LateUpdate()
     {
         if (isBeingManipulated)
-        {
-            RefreshLiveRuntimeData();
             return;
-        }
 
         if (mainMap == null) return;
 
