@@ -285,6 +285,8 @@ public class JsonSpawner : MonoBehaviour
             if (!hasColorPalette)
                 Debug.LogWarning("[JsonSpawner] Color palette is null or empty. Falling back to cyan for spawned geometry.");
 
+            HashSet<string> unsupportedClassesLogged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (Feature feature in currentRootData.features)
             {
                 Color groupColor = hasColorPalette
@@ -295,6 +297,24 @@ public class JsonSpawner : MonoBehaviour
                 {
                     string featureId = feature?.id ?? feature?.properties?.id ?? $"index {colorIndex}";
                     Debug.LogWarning($"[JsonSpawner] Skipped malformed feature '{featureId}': {validationError}");
+                    colorIndex++;
+                    continue;
+                }
+
+                string featureClass = feature.properties?.className;
+                if (!TryGetPrefabForClass(featureClass, out _))
+                {
+                    string unsupportedClass = string.IsNullOrWhiteSpace(featureClass)
+                        ? "<missing>"
+                        : featureClass.Trim();
+
+                    if (unsupportedClassesLogged.Add(unsupportedClass))
+                    {
+                        Debug.LogWarning(
+                            $"[JsonSpawner] Unsupported class '{unsupportedClass}'. " +
+                            "All incoming points, lines, and polygons with this class will be skipped.");
+                    }
+
                     colorIndex++;
                     continue;
                 }
