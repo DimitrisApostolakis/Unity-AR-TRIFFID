@@ -442,7 +442,7 @@ namespace GaussianSplatting.Runtime
             m_GpuSortKeys?.Dispose();
             m_SorterArgs.resources.Dispose();
 
-            EnsureSorterAndRegister();
+            EnsureSorter();
 
             m_GpuSortDistances = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4) { name = "GaussianSplatSortDistances" };
             m_GpuSortKeys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4) { name = "GaussianSplatSortIndices" };
@@ -474,18 +474,30 @@ namespace GaussianSplatting.Runtime
             }
         }
 
-        public void EnsureSorterAndRegister()
+        void EnsureSorter()
         {
             if (m_Sorter == null && resourcesAreSetUp)
-            {
                 m_Sorter = new GpuSorting(m_CSSplatUtilities);
-            }
+        }
 
-            if (!m_Registered && resourcesAreSetUp)
+        public void EnsureSorterAndRegister()
+        {
+            EnsureSorter();
+
+            if (!m_Registered && resourcesAreSetUp && HasValidRenderSetup)
             {
                 GaussianSplatRenderSystem.instance.RegisterSplat(this);
                 m_Registered = true;
             }
+        }
+
+        void UnregisterFromRenderSystem()
+        {
+            if (!m_Registered)
+                return;
+
+            GaussianSplatRenderSystem.instance.UnregisterSplat(this);
+            m_Registered = false;
         }
 
         public void OnEnable()
@@ -497,9 +509,15 @@ namespace GaussianSplatting.Runtime
                 return;
 
             EnsureMaterials();
-            EnsureSorterAndRegister();
 
+            // OnEnable can run repeatedly in the Editor. Always start from a clean GPU state.
+            UnregisterFromRenderSystem();
+            DisposeResourcesForAsset();
             CreateResourcesForAsset();
+
+            m_PrevAsset = m_Asset;
+            m_PrevHash = m_Asset ? m_Asset.dataHash : new Hash128();
+            EnsureSorterAndRegister();
         }
 
         void Start()
@@ -675,6 +693,7 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_GpuEditCutouts);
 
             m_SorterArgs.resources.Dispose();
+            m_SorterArgs = default;
 
             m_SplatCount = 0;
             m_GpuChunksValid = false;
@@ -689,9 +708,10 @@ namespace GaussianSplatting.Runtime
         public void OnDisable()
         {
             m_PlayModeLoadAttempted = false;
+
+            // Remove all command buffers before releasing the GPU buffers they reference.
+            UnregisterFromRenderSystem();
             DisposeResourcesForAsset();
-            GaussianSplatRenderSystem.instance.UnregisterSplat(this);
-            m_Registered = false;
 
             DestroyImmediate(m_MatSplats);
             DestroyImmediate(m_MatComposite);
@@ -770,8 +790,12 @@ namespace GaussianSplatting.Runtime
                 m_PrevHash = curHash;
                 if (resourcesAreSetUp)
                 {
+                    // Stop rendering before replacing resources so no command buffer can
+                    // reference buffers that are being disposed.
+                    UnregisterFromRenderSystem();
                     DisposeResourcesForAsset();
                     CreateResourcesForAsset();
+                    EnsureSorterAndRegister();
                 }
                 else
                 {
