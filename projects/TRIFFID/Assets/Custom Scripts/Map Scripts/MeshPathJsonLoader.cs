@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using GaussianSplatting.Runtime;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -28,6 +29,8 @@ public class MeshPathJsonLoader : MonoBehaviour
 {
     [Header("Path Source")]
     [SerializeField] private PathSource pathSource = PathSource.JsonFile;
+    [SerializeField] private ProjectPathResolver.PathRoot inputPathRoot =
+        ProjectPathResolver.PathRoot.ProjectRoot;
 
     [Header("JSON Config")]
     [SerializeField] private string jsonConfigPath = "project_paths.json";
@@ -144,76 +147,31 @@ public class MeshPathJsonLoader : MonoBehaviour
         lastResolvedJsonPath = string.Empty;
         lastResolvedMeshPath = string.Empty;
 
-        if (pathSource == PathSource.ManualOverride)
+        bool useSharedPathJson = pathSource == PathSource.JsonFile;
+        if (!ProjectPathResolver.TryResolveConfiguredPath(
+                manualMeshPath,
+                inputPathRoot,
+                useSharedPathJson,
+                jsonConfigPath,
+                meshPathJsonKey,
+                out meshPath,
+                out string error))
         {
-            if (string.IsNullOrWhiteSpace(manualMeshPath))
-                return Fail("The manual mesh path is missing or empty.");
-
-            meshPath = NormalizeMeshPath(manualMeshPath.Trim());
-            lastResolvedMeshPath = meshPath;
-            return true;
+            return Fail("Could not resolve mesh path: " + error);
         }
 
-        if (string.IsNullOrWhiteSpace(jsonConfigPath))
-            return Fail("The JSON config path is missing or empty.");
-
-        try
+        if (useSharedPathJson)
         {
-            lastResolvedJsonPath = Path.Combine(Application.streamingAssetsPath, jsonConfigPath);
-        }
-        catch (Exception exception)
-        {
-            return Fail("The JSON config path is invalid: " + exception.Message);
+            ProjectPathResolver.TryResolvePath(
+                jsonConfigPath,
+                ProjectPathResolver.PathRoot.StreamingAssets,
+                out lastResolvedJsonPath,
+                out _);
         }
 
-        if (!File.Exists(lastResolvedJsonPath))
-            return Fail("JSON file not found: " + lastResolvedJsonPath);
-
-        JObject root;
-        try
-        {
-            root = JObject.Parse(File.ReadAllText(lastResolvedJsonPath));
-        }
-        catch (JsonException exception)
-        {
-            return Fail("Invalid JSON in config file '" + lastResolvedJsonPath + "': " + exception.Message);
-        }
-        catch (Exception exception)
-        {
-            return Fail("Could not read JSON config file '" + lastResolvedJsonPath + "': " + exception.Message);
-        }
-
-        if (string.IsNullOrWhiteSpace(meshPathJsonKey))
-            return Fail("The configured mesh path JSON key is missing or empty.");
-
-        JToken meshPathToken;
-        try
-        {
-            meshPathToken = root.SelectToken(meshPathJsonKey, false);
-        }
-        catch (JsonException exception)
-        {
-            return Fail("The configured JSON key expression is invalid: " + exception.Message);
-        }
-
-        if (meshPathToken == null)
-            return Fail("Configured key '" + meshPathJsonKey + "' is missing from JSON config: " + lastResolvedJsonPath);
-
-        if (meshPathToken.Type != JTokenType.String)
-            return Fail("Configured key '" + meshPathJsonKey + "' must contain a mesh path string.");
-
-        string configuredMeshPath = meshPathToken.Value<string>();
-        if (string.IsNullOrWhiteSpace(configuredMeshPath))
-            return Fail("Configured key '" + meshPathJsonKey + "' is empty in JSON config: " + lastResolvedJsonPath);
-
-        meshPath = NormalizeMeshPath(configuredMeshPath.Trim());
+        meshPath = NormalizeMeshPath(meshPath);
         lastResolvedMeshPath = meshPath;
         return true;
-    }
-
-    private string NormalizeMeshPath(string path)
-    {
-        return preserveBackslashes ? path : path.Replace('\\', '/');
     }
 
     private bool ValidateTarget()

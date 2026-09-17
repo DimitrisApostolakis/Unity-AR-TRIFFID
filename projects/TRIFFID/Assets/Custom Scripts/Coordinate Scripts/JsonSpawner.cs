@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using GaussianSplatting.Runtime;
 using System.Threading.Tasks;
 using UnityEngine;
 using Newtonsoft.Json;
@@ -14,22 +15,32 @@ public class JsonSpawner : MonoBehaviour
     private const string LatestMqttFeatureId = "latest_mqtt_icon";
     private const string LatestMqttClassName = "ugv";
 
-    [Header("GeoJSON / Transform File Paths")]
-    [Tooltip("Source GeoJSON used when no saved runtime file is available. Relative paths are resolved from the project root.")]
-    public string geoJsonPath = DefaultGeoJsonPath; 
+    [Header("GeoJSON Input Path Loading")]
+    [Tooltip("Source GeoJSON used when no saved runtime file is available.")]
+    public string geoJsonPath = DefaultGeoJsonPath;
+    [SerializeField] private ProjectPathResolver.PathRoot geoJsonInputPathRoot =
+        ProjectPathResolver.PathRoot.ProjectRoot;
+    [SerializeField] private bool useSharedGeoJsonPathJson;
+    [SerializeField] private string sharedGeoJsonPathsJsonFile = "project_paths.json";
+    [SerializeField] private string geoJsonPathJsonKey = "geojson_path";
+
+    [Header("Transform Path Loading")]
     [Tooltip("COLMAP-to-ENU transform configuration JSON used for coordinate conversion.")]
     public string transformJsonPath = "Assets/Coordinates/transform_colmap_to_enu.json";
-    [Tooltip("Primary runtime GeoJSON save file. Relative paths use the save location selected below.")]
-    public string saveFilePath = DefaultRelativeSavePath;
-
-    [Header("Shared Transform Path Config")]
+    [SerializeField] private ProjectPathResolver.PathRoot transformInputPathRoot =
+        ProjectPathResolver.PathRoot.ProjectRoot;
     [SerializeField] private bool useSharedTransformPathJson = true;
     [SerializeField] private string sharedTransformPathsJsonFile = "project_paths.json";
     [SerializeField] private string transformPathJsonKey = "json_spawner_transform_path";
 
-    [Header("Save Location")]
-    [Tooltip("When enabled, relative save paths resolve inside the Unity project folder instead of Application.persistentDataPath.")]
-    [SerializeField] private bool saveInsideProjectFolder;
+    [Header("GeoJSON Output Path Loading")]
+    [Tooltip("Primary runtime GeoJSON save file.")]
+    public string saveFilePath = DefaultRelativeSavePath;
+    [SerializeField] private ProjectPathResolver.PathRoot saveOutputPathRoot =
+        ProjectPathResolver.PathRoot.PersistentDataPath;
+    [SerializeField] private bool useSharedSavePathJson;
+    [SerializeField] private string sharedSavePathsJsonFile = "project_paths.json";
+    [SerializeField] private string savePathJsonKey = "geojson_save_path";
 
     [Header("Map Parent (Optional)")]
     [Tooltip("Optional parent transform for spawned map annotations. The JsonSpawner transform is used when this is not assigned.")]
@@ -180,7 +191,20 @@ public class JsonSpawner : MonoBehaviour
         }
 
         string sanitizedPath = SanitizeSaveFilePath(saveFilePath);
-        resolvedSaveFilePath = ResolveSavePathForRuntime(sanitizedPath, saveInsideProjectFolder);
+        if (!ProjectPathResolver.TryResolveConfiguredPath(
+                sanitizedPath,
+                saveOutputPathRoot,
+                useSharedSavePathJson,
+                sharedSavePathsJsonFile,
+                savePathJsonKey,
+                out resolvedSaveFilePath,
+                out string error))
+        {
+            Debug.LogError("[JsonSpawner] Could not resolve GeoJSON output path: " + error, this);
+            resolvedSaveFilePath = string.Empty;
+            return resolvedSaveFilePath;
+        }
+
         saveFilePath = resolvedSaveFilePath;
         return resolvedSaveFilePath;
     }
@@ -364,7 +388,7 @@ public class JsonSpawner : MonoBehaviour
             return false;
         }
 
-        string resolvedGeoPath = ResolveJsonPathForRuntime(geoJsonPath);
+        string resolvedGeoPath = ResolveGeoJsonPathForRuntime();
         bool configuredGeoJsonTypeValid = ValidateGeoJsonFileType(resolvedGeoPath, true);
         loadPath = resolvedGeoPath;
 
@@ -1901,89 +1925,73 @@ public class JsonSpawner : MonoBehaviour
         return transformData.origin_wgs84.alt;
     }
 
+    private string ResolveGeoJsonPathForRuntime()
+    {
+        if (!ProjectPathResolver.TryResolveConfiguredPath(
+                geoJsonPath,
+                geoJsonInputPathRoot,
+                useSharedGeoJsonPathJson,
+                sharedGeoJsonPathsJsonFile,
+                geoJsonPathJsonKey,
+                out string resolvedPath,
+                out string error))
+        {
+            Debug.LogError("[JsonSpawner] Could not resolve GeoJSON input path: " + error, this);
+            return string.Empty;
+        }
+
+        return resolvedPath;
+    }
+
     private string ResolveTransformJsonPathForRuntime()
     {
-        if (useSharedTransformPathJson)
+        if (!ProjectPathResolver.TryResolveConfiguredPath(
+                transformJsonPath,
+                transformInputPathRoot,
+                useSharedTransformPathJson,
+                sharedTransformPathsJsonFile,
+                transformPathJsonKey,
+                out string resolvedPath,
+                out string error))
         {
-            if (!StreamingAssetsPathResolver.TryResolvePathFromStreamingAssetsJson(
-                    sharedTransformPathsJsonFile,
-                    transformPathJsonKey,
-                    out string resolvedPath,
-                    out string error))
-            {
-                Debug.LogError("[JsonSpawner] Failed to resolve shared transform path: " + error, this);
-                return string.Empty;
-            }
-
-            return resolvedPath;
+            Debug.LogError("[JsonSpawner] Could not resolve transform path: " + error, this);
+            return string.Empty;
         }
 
-        return ResolveJsonPathForRuntime(transformJsonPath);
+        return resolvedPath;
     }
 
-    [ContextMenu("Validate Shared Transform Path")]
+    [ContextMenu("Validate Configured Paths")]
+    public void ValidateConfiguredPaths()
+    {
+        string resolvedGeoJsonPath = ResolveGeoJsonPathForRuntime();
+        string resolvedTransformPath = ResolveTransformJsonPathForRuntime();
+        string resolvedOutputPath = GetResolvedSaveFilePath();
+
+        bool geoJsonValid = ValidateGeoJsonInputFile(resolvedGeoJsonPath);
+        bool transformValid = ValidateTransformConfigFile(resolvedTransformPath, true);
+        ValidateSavePathConfiguration(resolvedOutputPath);
+
+        bool outputValid =
+            !string.IsNullOrWhiteSpace(resolvedOutputPath) &&
+            !Directory.Exists(resolvedOutputPath) &&
+            ValidateGeoJsonFileType(resolvedOutputPath, true);
+
+        string message =
+            "[JsonSpawner] Configured Path Validation\n" +
+            "Resolved GeoJSON Input: " + resolvedGeoJsonPath + "\n" +
+            "Resolved Transform JSON: " + resolvedTransformPath + "\n" +
+            "Resolved GeoJSON Output: " + resolvedOutputPath;
+
+        if (geoJsonValid && transformValid && outputValid)
+            Debug.Log(message, this);
+        else
+            Debug.LogError(message + "\nOne or more configured paths are invalid.", this);
+    }
+
     public void ValidateSharedTransformPath()
     {
-        string resolvedTransformPath = ResolveTransformJsonPathForRuntime();
-
-        if (string.IsNullOrWhiteSpace(resolvedTransformPath))
-        {
-            Debug.LogError("[JsonSpawner] Resolved transform path is empty.", this);
-            return;
-        }
-
-        bool exists = File.Exists(resolvedTransformPath);
-
-        Debug.Log(
-            "[JsonSpawner] Shared Transform Path Validation\n" +
-            $"Use Shared Transform Path Json: {useSharedTransformPathJson}\n" +
-            $"Shared Config File: {sharedTransformPathsJsonFile}\n" +
-            $"Transform Path Json Key: {transformPathJsonKey}\n" +
-            $"Resolved Transform Path: {resolvedTransformPath}\n" +
-            $"Transform File Exists: {exists}",
-            this
-        );
-    }
-
-    private static string ResolveJsonPathForRuntime(string rawPath)
-    {
-        if (string.IsNullOrWhiteSpace(rawPath))
-            return string.Empty;
-
-        if (Path.IsPathRooted(rawPath))
-            return rawPath;
-
-        string normalized = rawPath.Replace("/", Path.DirectorySeparatorChar.ToString());
-
-        string projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
-        if (string.IsNullOrWhiteSpace(projectRoot))
-            return normalized;
-
-        return Path.Combine(projectRoot, normalized);
-    }
-
-    private static string ResolveSavePathForRuntime(string rawPath, bool useProjectFolder)
-    {
-        if (string.IsNullOrWhiteSpace(rawPath))
-            rawPath = DefaultRelativeSavePath;
-
-        if (Path.IsPathRooted(rawPath))
-            return rawPath;
-
-        string normalized = rawPath.Replace("\\", "/").TrimStart('/');
-        if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
-            normalized = normalized.Substring("Assets/".Length);
-
-        string basePath = Application.persistentDataPath;
-        if (useProjectFolder)
-        {
-            string projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
-            if (!string.IsNullOrWhiteSpace(projectRoot))
-                basePath = projectRoot;
-        }
-
-        string combined = Path.Combine(basePath, normalized.Replace("/", Path.DirectorySeparatorChar.ToString()));
-        return combined;
+        ValidateConfiguredPaths();
     }
 
     private static void ValidateSavePathConfiguration(string path)
