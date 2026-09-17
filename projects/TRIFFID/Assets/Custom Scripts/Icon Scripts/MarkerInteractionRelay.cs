@@ -9,6 +9,8 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
     private FloatingIcon floatingIcon;
     private bool isManipulating;
     private bool subscribed;
+    [SerializeField, Min(0.01f)] private float liveUpdateInterval = 0.1f;
+    private float nextLiveUpdateTime;
     private static bool missingPointDataWarningLogged;
     private static bool missingInteractableWarningLogged;
     private static bool missingSpawnerWarningLogged;
@@ -84,6 +86,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
     private void OnSelectEntered(SelectEnterEventArgs args)
     {
         isManipulating = true;
+        nextLiveUpdateTime = 0f;
         FocusMarker(MarkerFocusReason.Select);
     }
 
@@ -140,6 +143,11 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
         if (jsonSpawner == null || pointData == null)
             return;
 
+        if (Time.unscaledTime < nextLiveUpdateTime)
+            return;
+
+        nextLiveUpdateTime = Time.unscaledTime + Mathf.Max(0.01f, liveUpdateInterval);
+
         Transform mapRef = jsonSpawner.mapTransform != null ? jsonSpawner.mapTransform : jsonSpawner.transform;
         Vector3 currentLocal = mapRef.InverseTransformPoint(transform.position);
         JsonSpawner.Vector3Double wgs = jsonSpawner.ColmapToWgs84(currentLocal);
@@ -147,6 +155,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
         pointData.latitude = wgs.lat;
         pointData.longitude = wgs.lon;
         pointData.altitude = wgs.alt;
+        jsonSpawner.RefreshLiveHeightAboveSurface(pointData, transform);
 
         pointData.NotifyDataChanged();
         MarkerEventManager.RaiseMarkerMoved(pointData);
