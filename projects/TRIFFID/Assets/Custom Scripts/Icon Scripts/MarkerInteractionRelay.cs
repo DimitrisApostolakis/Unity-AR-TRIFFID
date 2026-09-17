@@ -6,11 +6,13 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
     private PointData pointData;
     private UnityEngine.XR.Interaction.Toolkit.Interactables.XRBaseInteractable interactable;
     private JsonSpawner jsonSpawner;
-    private FloatingIcon floatingIcon;
     private bool isManipulating;
     private bool subscribed;
     [SerializeField, Min(0.01f)] private float liveUpdateInterval = 0.1f;
+    [SerializeField, Min(0f)] private float movementEpsilon = 0.0001f;
     private float nextLiveUpdateTime;
+    private Vector3 lastLocalPosition;
+    private bool hasLastLocalPosition;
     private static bool missingPointDataWarningLogged;
     private static bool missingInteractableWarningLogged;
     private static bool missingSpawnerWarningLogged;
@@ -20,7 +22,6 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
     private void Awake()
     {
         pointData = GetComponent<PointData>();
-        floatingIcon = GetComponent<FloatingIcon>();
         if (pointData == null)
             LogMissingPointDataOnce();
         TrySubscribe(false);
@@ -29,6 +30,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
     private void OnEnable()
     {
         TrySubscribe(false);
+        CacheCurrentLocalPosition();
     }
 
     private void OnDisable()
@@ -42,6 +44,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
         if (pointData == null)
             LogMissingPointDataOnce();
         TrySubscribe(true);
+        CacheCurrentLocalPosition();
     }
 
     private void TrySubscribe(bool logIfMissing)
@@ -69,11 +72,13 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
 
     private void Unsubscribe()
     {
-        if (!subscribed || interactable == null) return;
+        if (subscribed && interactable != null)
+        {
+            interactable.hoverEntered.RemoveListener(OnHoverEntered);
+            interactable.selectEntered.RemoveListener(OnSelectEntered);
+            interactable.selectExited.RemoveListener(OnSelectExited);
+        }
 
-        interactable.hoverEntered.RemoveListener(OnHoverEntered);
-        interactable.selectEntered.RemoveListener(OnSelectEntered);
-        interactable.selectExited.RemoveListener(OnSelectExited);
         isManipulating = false;
         subscribed = false;
     }
@@ -87,19 +92,16 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
     {
         isManipulating = true;
         nextLiveUpdateTime = 0f;
+        CacheCurrentLocalPosition();
         FocusMarker(MarkerFocusReason.Select);
     }
 
     private void OnSelectExited(SelectExitEventArgs args)
     {
-        // Let FloatingIcon own the final sync only when it is actually
-        // handling this manipulation. Some runtime markers have a FloatingIcon
-        // component but use a different XRBaseInteractable wired through this relay.
-        if (floatingIcon != null && floatingIcon.IsBeingManipulated)
-        {
-            isManipulating = false;
-            return;
-        }
+        // Always take one uncapped sample before persistence. This relay is the
+        // common runtime path for server markers and locally drawn annotations.
+        RefreshRuntimeData(true);
+        isManipulating = false;
 
         ResolveSpawner();
         if (jsonSpawner == null && !missingSpawnerWarningLogged)
@@ -115,8 +117,6 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
             pointData.NotifyDataChanged();
             MarkerEventManager.RaiseMarkerMoved(pointData);
         }
-
-        isManipulating = false;
     }
 
     public void FocusMarker(MarkerFocusReason reason)
@@ -136,24 +136,38 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
 
     private void LateUpdate()
     {
-        if (!isManipulating)
-            return;
+        RefreshRuntimeData(false);
+    }
 
-        if (floatingIcon != null && floatingIcon.IsBeingManipulated)
-            return;
+    private bool RefreshRuntimeData(bool force)
+    {
+        if (pointData == null)
+            pointData = GetComponent<PointData>();
 
         ResolveSpawner();
         if (jsonSpawner == null || pointData == null)
-            return;
+            return false;
 
-        if (Time.unscaledTime < nextLiveUpdateTime)
-            return;
+        Vector3 currentObjectLocal = transform.localPosition;
+        float epsilon = Mathf.Max(0f, movementEpsilon);
+        bool positionChanged = !hasLastLocalPosition ||
+                               (currentObjectLocal - lastLocalPosition).sqrMagnitude > epsilon * epsilon;
+
+        // XR callbacks are useful when available, but positionChanged keeps live
+        // updates working for every runtime prefab even when callback wiring differs.
+        if (!force && !isManipulating && !positionChanged)
+            return false;
+
+        if (!force && Time.unscaledTime < nextLiveUpdateTime)
+            return false;
 
         nextLiveUpdateTime = Time.unscaledTime + Mathf.Max(0.01f, liveUpdateInterval);
+        lastLocalPosition = currentObjectLocal;
+        hasLastLocalPosition = true;
 
         Transform mapRef = jsonSpawner.mapTransform != null ? jsonSpawner.mapTransform : jsonSpawner.transform;
-        Vector3 currentLocal = mapRef.InverseTransformPoint(transform.position);
-        JsonSpawner.Vector3Double wgs = jsonSpawner.ColmapToWgs84(currentLocal);
+        Vector3 currentMapLocal = mapRef.InverseTransformPoint(transform.position);
+        JsonSpawner.Vector3Double wgs = jsonSpawner.ColmapToWgs84(currentMapLocal);
 
         pointData.latitude = wgs.lat;
         pointData.longitude = wgs.lon;
@@ -162,6 +176,13 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
 
         pointData.NotifyDataChanged();
         MarkerEventManager.RaiseMarkerMoved(pointData);
+        return true;
+    }
+
+    private void CacheCurrentLocalPosition()
+    {
+        lastLocalPosition = transform.localPosition;
+        hasLastLocalPosition = true;
     }
 
     private void ResolveSpawner()
