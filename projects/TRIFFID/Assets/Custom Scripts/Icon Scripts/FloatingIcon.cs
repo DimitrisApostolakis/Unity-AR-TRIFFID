@@ -116,6 +116,8 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
 
     public void OnManipulationEnded(SelectExitEventArgs args)
     {
+        // Take one final uncapped sample while the manipulation state is still active.
+        RefreshLiveRuntimeData();
         isBeingManipulated = false;
         manipulationDrivenByGrabSelectedFallback = false;
 
@@ -183,10 +185,10 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
         Vector3 currentLocal = mainMap.InverseTransformPoint(transform.position);
         JsonSpawner.Vector3Double wgs = mySpawner.ColmapToWgs84(currentLocal);
 
+        mySpawner.RefreshLiveHeightAboveSurface(myPointData, transform);
         myPointData.latitude = wgs.lat;
         myPointData.longitude = wgs.lon;
         myPointData.altitude = wgs.alt;
-        mySpawner.RefreshLiveHeightAboveSurface(myPointData, transform);
 
         myPointData.NotifyDataChanged();
         if (infoPanel != null && !infoPanel.IsObservingMarker(myPointData))
