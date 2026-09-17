@@ -3567,6 +3567,7 @@ public class JsonSpawner : MonoBehaviour
             data.latitude = coordArray[1].Value<double>();
             data.altitude = coordArray[2].Value<double>();
             data.confidence = feature.properties?.confidence ?? 1f;
+            RefreshHeightAboveSurface(node, null, data);
 
             CacheLineNodeColorHex(node, resolvedLineColorHex);
 
@@ -3574,7 +3575,12 @@ public class JsonSpawner : MonoBehaviour
         }
 
         if (registered > 0)
+        {
+            UpdateFeatureHeightAboveSurfaceData(feature);
+            MarkDataDirty();
+            SaveCurrentStateToPersistentStorage();
             Debug.Log($"[JsonSpawner] RegisterRuntimeLineNodes: feature {featureId}, nodes registered={registered}");
+        }
 
         return registered > 0;
     }
@@ -3643,13 +3649,19 @@ public class JsonSpawner : MonoBehaviour
             data.latitude = coordArray[1].Value<double>();
             data.altitude = coordArray[2].Value<double>();
             data.confidence = feature.properties?.confidence ?? 1f;
+            RefreshHeightAboveSurface(node, null, data);
 
             CacheLineNodeColorHex(node, resolvedLineColorHex);
             registered++;
         }
 
         if (registered > 0)
+        {
+            UpdateFeatureHeightAboveSurfaceData(feature);
+            MarkDataDirty();
+            SaveCurrentStateToPersistentStorage();
             Debug.Log($"[JsonSpawner] RegisterRuntimePolygonNodes: feature {featureId}, nodes registered={registered}");
+        }
 
         return registered > 0;
     }
