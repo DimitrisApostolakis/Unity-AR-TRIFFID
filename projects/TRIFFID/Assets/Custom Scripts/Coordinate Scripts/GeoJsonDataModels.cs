@@ -16,6 +16,9 @@ public class Properties
     [JsonProperty("height_above_surface_m", NullValueHandling = NullValueHandling.Ignore)]
     public float? height_above_surface_m;
 
+    [JsonProperty("heights_above_surface_m", NullValueHandling = NullValueHandling.Ignore)]
+    public JToken heights_above_surface_m;
+
     [JsonProperty("marker-color", NullValueHandling = NullValueHandling.Ignore)]
     public string marker_color;
 
