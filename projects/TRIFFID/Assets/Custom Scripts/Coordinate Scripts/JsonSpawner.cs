@@ -528,6 +528,7 @@ public class JsonSpawner : MonoBehaviour
 
         bool updated = false;
         string targetId = data.pointID ?? string.Empty;
+        HashSet<Feature> vertexHeightFeatures = new HashSet<Feature>();
 
         foreach (var mapping in nodeMappings)
         {
@@ -541,10 +542,15 @@ public class JsonSpawner : MonoBehaviour
             if (!string.Equals(featureId, targetId, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            if (IsPointFeature(mapping.parentFeature))
-                RefreshHeightAboveSurface(mapping.node, mapping.parentFeature, data);
+            bool isPointFeature = IsPointFeature(mapping.parentFeature);
+            bool storesVertexHeights = SupportsPerVertexHeight(mapping.parentFeature);
 
-            if (mapping.coordArray != null)
+            if (isPointFeature)
+                RefreshHeightAboveSurface(mapping.node, mapping.parentFeature, data);
+            else
+                RefreshHeightAboveSurface(mapping.node, null, data);
+
+            if (!mapping.isCentroid && mapping.coordArray != null)
             {
                 if (mapping.coordArray.Count >= 2)
                 {
@@ -554,18 +560,31 @@ public class JsonSpawner : MonoBehaviour
 
                 if (mapping.coordArray.Count >= 3)
                     mapping.coordArray[2] = data.altitude;
+                else
+                    mapping.coordArray.Add(data.altitude);
             }
 
-            if (mapping.parentFeature.properties != null)
+            if (mapping.parentFeature.properties != null && !mapping.isCentroid)
             {
                 mapping.parentFeature.properties.altitude_m = (float)data.altitude;
-                mapping.parentFeature.properties.height_above_surface_m = data.hasHeightAboveSurface
-                    ? (float?)data.heightAboveSurface
-                    : null;
+
+                if (isPointFeature)
+                {
+                    mapping.parentFeature.properties.height_above_surface_m = data.hasHeightAboveSurface
+                        ? (float?)data.heightAboveSurface
+                        : null;
+                }
+                else if (storesVertexHeights)
+                {
+                    vertexHeightFeatures.Add(mapping.parentFeature);
+                }
             }
 
             updated = true;
         }
+
+        foreach (Feature feature in vertexHeightFeatures)
+            UpdateFeatureHeightAboveSurfaceData(feature);
 
         if (updated)
         {
@@ -655,7 +674,7 @@ public class JsonSpawner : MonoBehaviour
             if (!mapping.isCentroid && mapping.parentCentroid != null)
                 RecalculateCentroidForNode(mapping);
 
-            SyncData(movedData);
+            SyncData(movedData, movedIcon.transform);
             SaveCurrentStateToPersistentStorage();
             Debug.Log($"[JsonSpawner] Position saved for mapped object.");
         }
@@ -1053,10 +1072,12 @@ public class JsonSpawner : MonoBehaviour
     private void SyncWorldToJSON()
     {
         Transform parentRef = mapTransform != null ? mapTransform : transform;
+        HashSet<Feature> vertexHeightFeatures = new HashSet<Feature>();
 
         foreach (var mapping in nodeMappings)
         {
-            if (mapping.node == null) continue;
+            if (mapping == null || mapping.node == null || mapping.parentFeature == null)
+                continue;
 
             Vector3 localToMap = GetStableMapLocalPosition(mapping.node, parentRef);
             Vector3Double wgs84 = ColmapToWgs84(localToMap);
@@ -1072,7 +1093,7 @@ public class JsonSpawner : MonoBehaviour
                     mapping.coordArray.Add(wgs84.alt);
             }
 
-            if (mapping.parentFeature.properties != null)
+            if (!mapping.isCentroid && mapping.parentFeature.properties != null)
             {
                 mapping.parentFeature.properties.altitude_m = (float)wgs84.alt;
 
@@ -1082,12 +1103,19 @@ public class JsonSpawner : MonoBehaviour
                     if (pointData != null && pointData.hasHeightAboveSurface)
                         mapping.parentFeature.properties.height_above_surface_m = (float)pointData.heightAboveSurface;
                 }
+                else if (SupportsPerVertexHeight(mapping.parentFeature))
+                {
+                    vertexHeightFeatures.Add(mapping.parentFeature);
+                }
             }
 
             SyncPointDataFromWgs(mapping.node, wgs84);
         }
 
         EnforceClosedPolygonRings();
+
+        foreach (Feature feature in vertexHeightFeatures)
+            UpdateFeatureHeightAboveSurfaceData(feature);
     }
 
     private static Vector3 GetStableMapLocalPosition(Transform node, Transform defaultMapTransform)
@@ -1200,9 +1228,17 @@ public class JsonSpawner : MonoBehaviour
                              Math.Abs(first[1].Value<double>() - last[1].Value<double>()) < 1e-10;
 
         if (alreadyClosed)
-            ring[ring.Count - 1] = closing;
+        {
+            // Keep the original coordinate array instance because nodeMappings
+            // references it directly for live vertex updates.
+            last.Clear();
+            foreach (JToken value in closing)
+                last.Add(value);
+        }
         else
+        {
             ring.Add(closing);
+        }
     }
 
     private void SetupIcon(GameObject obj)
@@ -1583,8 +1619,36 @@ public class JsonSpawner : MonoBehaviour
             data.latitude   = lat;
             data.longitude  = lon;
             data.altitude   = alt;
-            if (!isLineNode && IsPointFeature(feature) && RefreshHeightAboveSurface(obj.transform, feature, data))
+
+            bool heightMetadataChanged = false;
+            if (isCentroid)
+            {
+                // A centroid can show a live value in the InfoPanel, but it is not
+                // part of the per-vertex GeoJSON height array.
+                RefreshHeightAboveSurface(obj.transform, null, data);
+            }
+            else if (IsPointFeature(feature))
+            {
+                heightMetadataChanged = RefreshHeightAboveSurface(obj.transform, feature, data);
+            }
+            else if (SupportsPerVertexHeight(feature))
+            {
+                bool hadStoredHeight = TryGetStoredVertexHeight(feature, token, out double storedHeight);
+                RefreshHeightAboveSurface(obj.transform, null, data);
+
+                if (!data.hasHeightAboveSurface && hadStoredHeight)
+                {
+                    data.heightAboveSurface = storedHeight;
+                    data.hasHeightAboveSurface = true;
+                }
+
+                heightMetadataChanged = data.hasHeightAboveSurface &&
+                                        (!hadStoredHeight || Math.Abs(data.heightAboveSurface - storedHeight) > 1e-4);
+            }
+
+            if (heightMetadataChanged)
                 MarkDataDirty();
+
             data.confidence = feature.properties?.confidence ?? 0f;
             if (isLineNode)
             {
@@ -1885,6 +1949,139 @@ public class JsonSpawner : MonoBehaviour
     private static bool IsPointFeature(Feature feature)
     {
         return string.Equals(feature?.geometry?.type, "Point", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool SupportsPerVertexHeight(Feature feature)
+    {
+        string geometryType = feature?.geometry?.type;
+        return string.Equals(geometryType, "LineString", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(geometryType, "MultiLineString", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(geometryType, "Polygon", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(geometryType, "MultiPolygon", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetStoredVertexHeight(Feature feature, JArray targetCoordinate, out double height)
+    {
+        height = 0d;
+        if (!SupportsPerVertexHeight(feature) ||
+            targetCoordinate == null ||
+            feature.geometry?.coordinates == null ||
+            feature.properties?.heights_above_surface_m == null)
+        {
+            return false;
+        }
+
+        return TryFindStoredVertexHeight(
+            feature.geometry.coordinates,
+            feature.properties.heights_above_surface_m,
+            targetCoordinate,
+            out height);
+    }
+
+    private static bool TryFindStoredVertexHeight(
+        JToken coordinates,
+        JToken heights,
+        JArray targetCoordinate,
+        out double height)
+    {
+        height = 0d;
+
+        if (ReferenceEquals(coordinates, targetCoordinate))
+        {
+            if (!TryGetDouble(heights, out double parsedHeight) || !IsFiniteNumber(parsedHeight))
+                return false;
+
+            height = Math.Max(0d, parsedHeight);
+            return true;
+        }
+
+        if (!(coordinates is JArray coordinateArray) || !(heights is JArray heightArray))
+            return false;
+
+        int count = Math.Min(coordinateArray.Count, heightArray.Count);
+        for (int i = 0; i < count; i++)
+        {
+            if (TryFindStoredVertexHeight(coordinateArray[i], heightArray[i], targetCoordinate, out height))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void UpdateFeatureHeightAboveSurfaceData(Feature feature)
+    {
+        if (!SupportsPerVertexHeight(feature) || feature.geometry?.coordinates == null)
+            return;
+
+        if (feature.properties == null)
+            feature.properties = new Properties();
+
+        Dictionary<JArray, PointData> heightByCoordinate = new Dictionary<JArray, PointData>();
+        foreach (NodeMapping mapping in nodeMappings)
+        {
+            if (mapping == null || mapping.isCentroid ||
+                !ReferenceEquals(mapping.parentFeature, feature) ||
+                mapping.coordArray == null || mapping.node == null)
+            {
+                continue;
+            }
+
+            PointData pointData = mapping.node.GetComponent<PointData>();
+            if (pointData != null)
+                heightByCoordinate[mapping.coordArray] = pointData;
+        }
+
+        feature.properties.heights_above_surface_m =
+            BuildVertexHeightTree(feature.geometry.coordinates, heightByCoordinate);
+        feature.properties.height_above_surface_m = null;
+    }
+
+    private static JToken BuildVertexHeightTree(
+        JToken coordinates,
+        Dictionary<JArray, PointData> heightByCoordinate)
+    {
+        if (!(coordinates is JArray coordinateArray))
+            return JValue.CreateNull();
+
+        if (IsCoordinateTuple(coordinateArray))
+        {
+            if (heightByCoordinate.TryGetValue(coordinateArray, out PointData pointData) &&
+                pointData != null &&
+                pointData.hasHeightAboveSurface &&
+                IsFiniteNumber(pointData.heightAboveSurface))
+            {
+                return new JValue(Math.Max(0d, pointData.heightAboveSurface));
+            }
+
+            return JValue.CreateNull();
+        }
+
+        JArray result = new JArray();
+        foreach (JToken child in coordinateArray)
+            result.Add(BuildVertexHeightTree(child, heightByCoordinate));
+
+        // GeoJSON polygon rings repeat the first coordinate at the end. The
+        // repeated vertex reuses the same scene node, so persist the same height.
+        if (coordinateArray.Count > 1 &&
+            coordinateArray[0] is JArray firstCoordinate &&
+            coordinateArray[coordinateArray.Count - 1] is JArray lastCoordinate &&
+            IsCoordinateTuple(firstCoordinate) &&
+            IsCoordinateTuple(lastCoordinate) &&
+            AreCoordinatePairsNear(firstCoordinate, lastCoordinate) &&
+            result.Count == coordinateArray.Count)
+        {
+            result[result.Count - 1] = result[0].DeepClone();
+        }
+
+        return result;
+    }
+
+    private static bool IsCoordinateTuple(JArray coordinate)
+    {
+        return coordinate != null &&
+               coordinate.Count >= 2 &&
+               TryGetDouble(coordinate[0], out _) &&
+               TryGetDouble(coordinate[1], out _);
     }
 
     private bool TryRaycastSurfaceFromPivot(Vector3 pivot, Vector3 castAxis, float rayStartOffset, float rayDistance, float snapLift, out Vector3 snappedWorldPos)
