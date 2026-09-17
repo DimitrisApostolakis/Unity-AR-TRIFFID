@@ -1650,6 +1650,31 @@ public class JsonSpawner : MonoBehaviour
         return true;
     }
 
+    private Vector3 GetWorldAltitudeAxis(Transform parentRef)
+    {
+        if (parentRef != null && transformData?.colmap_to_enu?.R_rowmajor != null)
+        {
+            float[] rotation = transformData.colmap_to_enu.R_rowmajor;
+            if (rotation.Length >= 9)
+            {
+                // R maps COLMAP coordinates to ENU. The third row therefore gives
+                // the ENU-up direction expressed in COLMAP coordinates.
+                Vector3 colmapUp = new Vector3(rotation[6], rotation[7], rotation[8]);
+                if (IsFiniteNumber(colmapUp.x) && IsFiniteNumber(colmapUp.y) &&
+                    IsFiniteNumber(colmapUp.z) && colmapUp.sqrMagnitude > 1e-8f)
+                {
+                    Vector3 worldUp = parentRef.TransformDirection(colmapUp.normalized);
+                    if (worldUp.sqrMagnitude > 1e-8f)
+                        return worldUp.normalized;
+                }
+            }
+        }
+
+        return parentRef != null && parentRef.up.sqrMagnitude > 1e-6f
+            ? parentRef.up.normalized
+            : Vector3.up;
+    }
+
     private bool TrySnapToSurface(Vector3 approximateWorldPos, Transform parentRef, out Vector3 snappedWorldPos)
     {
         snappedWorldPos = approximateWorldPos;
@@ -1662,7 +1687,7 @@ public class JsonSpawner : MonoBehaviour
 
         try
         {
-            Vector3 castAxis = parentRef.up.sqrMagnitude > 1e-6f ? parentRef.up.normalized : Vector3.up;
+            Vector3 castAxis = GetWorldAltitudeAxis(parentRef);
             float rayStartOffset = Mathf.Max(0.25f, surfaceSnapRayStartOffset);
             float rayDistance = Mathf.Max(0.5f, surfaceSnapRayDistance);
             float snapLift = Mathf.Max(0f, surfaceSnapOffset + surfaceSnapLift);
@@ -1757,7 +1782,7 @@ public class JsonSpawner : MonoBehaviour
 
         Vector3 pointLocalPosition = GetStableMapLocalPosition(pointTransform, parentRef);
         Vector3 pointWorldPosition = parentRef.TransformPoint(pointLocalPosition);
-        Vector3 castAxis = parentRef.up.sqrMagnitude > 1e-6f ? parentRef.up.normalized : Vector3.up;
+        Vector3 castAxis = GetWorldAltitudeAxis(parentRef);
 
         bool activatedSurfaceForQuery = false;
         PrepareSurfaceForSnap(ref activatedSurfaceForQuery);
