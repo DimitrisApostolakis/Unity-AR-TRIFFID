@@ -138,6 +138,7 @@ The system uses GeoJSON format with extended properties for AR metadata:
         "category": "classification",
         "source": "data_source",
         "altitude_m": 0.472,
+        "height_above_surface_m": 1.250,
         "marker-color": "#FF0000"
       },
       "geometry": {
@@ -158,6 +159,8 @@ Polygon
 ```
 
 For synchronization consistency, `feature.id` and `properties.id` should refer to the same annotation identifier.
+
+For point features, `altitude_m` and the third coordinate retain the absolute WGS84 altitude used for coordinate conversion and spawning. `height_above_surface_m` stores the point's vertical height above the configured map mesh in metres and is the value displayed in the Unity information panel.
 
 ## Notes on Local Synchronization
 

@@ -26,7 +26,7 @@ public class PointInfoPanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI idValueText;
     [Tooltip("Text displaying the selected marker latitude.")]
     [SerializeField] private TextMeshProUGUI latValueText;
-    [Tooltip("Text displaying the selected marker altitude.")]
+    [Tooltip("Text displaying the selected marker height above the map surface.")]
     [SerializeField] private TextMeshProUGUI altitudeValueText;    
     [Tooltip("Text displaying the selected marker longitude.")]
     [SerializeField] private TextMeshProUGUI longValueText;
@@ -472,7 +472,12 @@ public class PointInfoPanel : MonoBehaviour
 
         if (classText         != null) classText.text         = GetDisplayClassName(p);
         if (idValueText       != null) idValueText.text       = p.pointID;
-        if (altitudeValueText != null) altitudeValueText.text = $"{p.altitude:F2} m";
+        if (altitudeValueText != null)
+        {
+            altitudeValueText.text = p.hasHeightAboveSurface
+                ? $"{p.heightAboveSurface:F2} m"
+                : "-";
+        }
         if (sourceText        != null) sourceText.text        = IsProtectedLatestMqttMarker(p) ? string.Empty : p.source;
         if (latValueText      != null) latValueText.text      = $"{Mathf.Abs((float)p.latitude):F4}° {(p.latitude  >= 0 ? "N" : "S")}";
         if (longValueText     != null) longValueText.text     = $"{Mathf.Abs((float)p.longitude):F4}° {(p.longitude >= 0 ? "E" : "W")}";

@@ -654,6 +654,7 @@ public class GeoJsonApiManager : MonoBehaviour
 
             NormalizeNumberField(propertiesObj, "confidence", 0d);
             NormalizeNumberField(propertiesObj, "altitude_m", 0d);
+            NormalizeOptionalNumberField(propertiesObj, "height_above_surface_m");
 
             JToken featureId = featureObj["id"];
             if (featureId == null || featureId.Type == JTokenType.Null || string.IsNullOrWhiteSpace(featureId.ToString()))
@@ -703,5 +704,24 @@ public class GeoJsonApiManager : MonoBehaviour
             obj[fieldName] = parsed;
         else
             obj[fieldName] = fallback;
+    }
+
+    private static void NormalizeOptionalNumberField(JObject obj, string fieldName)
+    {
+        if (obj == null || string.IsNullOrWhiteSpace(fieldName))
+            return;
+
+        JToken token = obj[fieldName];
+        if (token == null || token.Type == JTokenType.Null)
+            return;
+
+        if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+            return;
+
+        string raw = token.ToString().Trim();
+        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
+            obj[fieldName] = parsed;
+        else
+            obj.Remove(fieldName);
     }
 }

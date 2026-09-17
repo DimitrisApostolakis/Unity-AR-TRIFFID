@@ -11,7 +11,9 @@ public class PointData : MonoBehaviour
     public string lineColorHex = "";
     public double latitude   = 0.0;
     public double longitude  = 0.0;
-    public double altitude   = 0.0; 
+    public double altitude   = 0.0;
+    public double heightAboveSurface = 0.0;
+    public bool hasHeightAboveSurface = false;
     public float  confidence = 0f;
 
     public Action OnDataChanged;
