@@ -3,215 +3,47 @@
   "features": [
     {
       "type": "Feature",
-      "id": "feature_33082a32934e4913855c5dc4fb6c1060",
-      "properties": {
-        "class": "hole",
-        "id": "feature_33082a32934e4913855c5dc4fb6c1060",
-        "confidence": 1.0,
-        "category": "hole",
-        "source": "ground station",
-        "altitude_m": 98.62104,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.710679358984954,
-          37.961693758305749,
-          98.621038102544844
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_36ee3a3bf17d4e18a6d2cb648d0760d2",
-      "properties": {
-        "class": "hole",
-        "id": "feature_36ee3a3bf17d4e18a6d2cb648d0760d2",
-        "confidence": 1.0,
-        "category": "hole",
-        "source": "ground station",
-        "altitude_m": 81.84478,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.709330739291502,
-          37.961384841664106,
-          81.844779280014336
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_377780fb6f1449eabd03e8e225757877",
-      "properties": {
-        "class": "safe",
-        "id": "feature_377780fb6f1449eabd03e8e225757877",
-        "confidence": 1.0,
-        "category": "navigation",
-        "source": "ground station",
-        "altitude_m": 88.42572,
-        "marker-color": "#2c86cd",
-        "fill": "#2c86cd",
-        "fill-opacity": 0.25
-      },
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [
-          [
-            [
-              23.713341710664096,
-              37.959415262442967,
-              50.864284791052341
-            ],
-            [
-              23.709930664981595,
-              37.960351390706862,
-              99.239277271553874
-            ],
-            [
-              23.710336216544189,
-              37.959571663907646,
-              88.42571674566716
-            ],
-            [
-              23.710115192341966,
-              37.960133205582807,
-              100.18246452789754
-            ],
-            [
-              23.713341710071358,
-              37.959415262364971,
-              50.864290312863886
-            ],
-            [
-              23.713341710664096,
-              37.959415262442967,
-              50.864284791052341
-            ]
-          ]
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_38efa6e789ad474987c08972a314ef98",
-      "properties": {
-        "class": "barrier",
-        "id": "feature_38efa6e789ad474987c08972a314ef98",
-        "confidence": 1.0,
-        "category": "barrier",
-        "source": "ground station",
-        "altitude_m": 115.431122,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.708289160891638,
-          37.961581586529256,
-          115.43112118728459
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_46055118a9f443bebd1a4065f67dc40b",
-      "properties": {
-        "class": "barrel",
-        "id": "feature_46055118a9f443bebd1a4065f67dc40b",
-        "confidence": 1.0,
-        "category": "barrel",
-        "source": "ground station",
-        "altitude_m": 90.69159,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.709104652468287,
-          37.960614834113954,
-          90.691591451875865
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_5568c327b19b430d98cffb3ed5906dd8",
-      "properties": {
-        "class": "hole",
-        "id": "feature_5568c327b19b430d98cffb3ed5906dd8",
-        "confidence": 1.0,
-        "category": "hole",
-        "source": "ground station",
-        "altitude_m": 98.50709,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.711158269000236,
-          37.960784591194852,
-          98.507085372693837
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_6ce38fdd4b5a4872a5e9e8101bd2d7fa",
+      "id": "feature_262e61b6a0ee4e258006fb14304a74b5",
       "properties": {
         "class": "citizen",
-        "id": "feature_6ce38fdd4b5a4872a5e9e8101bd2d7fa",
+        "id": "feature_262e61b6a0ee4e258006fb14304a74b5",
         "confidence": 1.0,
         "category": "citizen",
         "source": "ground station",
-        "altitude_m": 88.70731,
+        "altitude_m": 96.12451,
+        "height_above_surface_m": 10.279397,
         "marker-color": "#ff0000"
       },
       "geometry": {
         "type": "Point",
         "coordinates": [
-          23.708106561665108,
-          37.9608399688318,
-          88.707315578125417
+          23.70826527820541,
+          37.96129135088205,
+          96.124508632346988
         ]
       }
     },
     {
       "type": "Feature",
-      "id": "feature_a5d2cac978cb43a5a138bf6804ea6d2d",
+      "id": "feature_52344fd4f1614a29b8728be2471047d7",
       "properties": {
-        "class": "hole",
-        "id": "feature_a5d2cac978cb43a5a138bf6804ea6d2d",
-        "confidence": 1.0,
-        "category": "hole",
-        "source": "ground station",
-        "altitude_m": 109.42749,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.709267994115422,
-          37.961521870354822,
-          109.42748791817576
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_af8fe9e119864f728e59f45839a5d485",
-      "properties": {
-        "class": "unsafe",
-        "id": "feature_af8fe9e119864f728e59f45839a5d485",
+        "class": "safe",
+        "id": "feature_52344fd4f1614a29b8728be2471047d7",
         "confidence": 1.0,
         "category": "navigation",
         "source": "ground station",
-        "altitude_m": 81.45347,
-        "marker-color": "#159ffb",
-        "fill": "#159ffb",
+        "altitude_m": 98.8389053,
+        "heights_above_surface_m": [
+          [
+            6.5374531215056777,
+            null,
+            14.475197707302868,
+            3.3521724240854383,
+            6.5374531215056777
+          ]
+        ],
+        "marker-color": "#0000ff",
+        "fill": "#0000ff",
         "fill-opacity": 0.25
       },
       "geometry": {
@@ -219,34 +51,29 @@
         "coordinates": [
           [
             [
-              23.708138927043247,
-              37.961710511184265,
-              81.453467519953847
+              23.706691902882586,
+              37.961141350464622,
+              98.838905744254589
             ],
             [
-              23.708543203904444,
-              37.961364255475004,
-              77.904974782839417
+              23.7078356649915,
+              37.960165270971075,
+              83.733850282616913
             ],
             [
-              23.708101672895776,
-              37.96106858951692,
-              80.455056924372911
+              23.709534555157305,
+              37.961428704036017,
+              89.167070151306689
             ],
             [
-              23.707698977317843,
-              37.9614083144342,
-              79.793925936333835
+              23.708582730603773,
+              37.962313299418277,
+              84.767871035262942
             ],
             [
-              23.708138927043247,
-              37.961710511184265,
-              81.453467519953847
-            ],
-            [
-              23.708138927043247,
-              37.961710511184265,
-              81.453467519953847
+              23.706691902882586,
+              37.961141350464622,
+              98.838905744254589
             ]
           ]
         ]
@@ -254,180 +81,83 @@
     },
     {
       "type": "Feature",
-      "id": "feature_c3a67c1229814bc29269d83927c3f340",
+      "id": "feature_6b8193f6ef664054a20312bf9c7d54a9",
+      "properties": {
+        "class": "barrier",
+        "id": "feature_6b8193f6ef664054a20312bf9c7d54a9",
+        "confidence": 1.0,
+        "category": "barrier",
+        "source": "ground station",
+        "altitude_m": 80.08369,
+        "height_above_surface_m": 51.6732521,
+        "marker-color": "#ff0000"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          23.708714061889957,
+          37.960896658079285,
+          80.083685914054513
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "feature_b0c31acfc59244d398d7cc9f86a7e49e",
       "properties": {
         "class": "road",
-        "id": "feature_c3a67c1229814bc29269d83927c3f340",
+        "id": "feature_b0c31acfc59244d398d7cc9f86a7e49e",
         "confidence": 1.0,
         "category": "navigation",
         "source": "ground station",
-        "altitude_m": 81.41093,
+        "altitude_m": 79.56011,
+        "heights_above_surface_m": [
+          3.476804475300014,
+          6.3345752786844969,
+          3.8021688926965
+        ],
         "marker-color": "#ffeb04"
       },
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            23.707572795817089,
-            37.95979752400288,
-            75.0098653677851
+            23.707919253819004,
+            37.960039275631118,
+            79.198539710603654
           ],
           [
-            23.708426918338933,
-            37.960400054550668,
-            79.181300043128431
+            23.70882241994364,
+            37.960665155733082,
+            80.800962396897376
           ],
           [
-            23.7093037055501,
-            37.960996961450952,
-            80.981857672333717
-          ],
-          [
-            23.710262756569797,
-            37.961654141798718,
-            80.406668297015131
-          ],
-          [
-            23.71129897003857,
-            37.962142181589456,
-            81.410925471223891
+            23.709684681904793,
+            37.961231915328717,
+            79.560109433718026
           ]
         ]
       }
     },
     {
       "type": "Feature",
-      "id": "feature_d2a12b79fbd64b5c96f4680ba4c7b165",
+      "id": "feature_c43c0a328eb243aaa49976648fca4cc6",
       "properties": {
-        "class": "barrier",
-        "id": "feature_d2a12b79fbd64b5c96f4680ba4c7b165",
+        "class": "animal",
+        "id": "feature_c43c0a328eb243aaa49976648fca4cc6",
         "confidence": 1.0,
-        "category": "barrier",
+        "category": "animal",
         "source": "ground station",
-        "altitude_m": 81.56601,
+        "altitude_m": 83.05541,
+        "height_above_surface_m": 6.43357658,
         "marker-color": "#ff0000"
       },
       "geometry": {
         "type": "Point",
         "coordinates": [
-          23.70866561368123,
-          37.960917992680756,
-          81.566011122427881
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_e3950b55609b450b9e93d474775bab13",
-      "properties": {
-        "class": "barrel",
-        "id": "feature_e3950b55609b450b9e93d474775bab13",
-        "confidence": 1.0,
-        "category": "barrel",
-        "source": "ground station",
-        "altitude_m": 90.20643,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.708936110246874,
-          37.960177469106668,
-          90.206429555080831
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_eaa76edc920f40e59df6a5d703688c43",
-      "properties": {
-        "class": "unsafe",
-        "id": "feature_eaa76edc920f40e59df6a5d703688c43",
-        "confidence": 1.0,
-        "category": "navigation",
-        "source": "ground station",
-        "altitude_m": 81.21532,
-        "marker-color": "#cf0fc0",
-        "fill": "#cf0fc0",
-        "fill-opacity": 0.25
-      },
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [
-          [
-            [
-              23.707214425644104,
-              37.962248422824842,
-              81.2153130536899
-            ],
-            [
-              23.707711600613088,
-              37.961765721304495,
-              80.0775062777102
-            ],
-            [
-              23.706823067672584,
-              37.961095758477029,
-              79.928665881976485
-            ],
-            [
-              23.706190198030573,
-              37.961583853698464,
-              97.746487840078771
-            ],
-            [
-              23.707214425365983,
-              37.962248423013705,
-              81.215313894674182
-            ],
-            [
-              23.707214425644104,
-              37.962248422824842,
-              81.2153130536899
-            ]
-          ]
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_f71c341ad1064449afd12ae2d8d76f9a",
-      "properties": {
-        "class": "barrier",
-        "id": "feature_f71c341ad1064449afd12ae2d8d76f9a",
-        "confidence": 1.0,
-        "category": "barrier",
-        "source": "ground station",
-        "altitude_m": 87.0195541,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.708614274512453,
-          37.959448168754911,
-          87.019557912833989
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_f8d6136576f447198644d93680a717e2",
-      "properties": {
-        "class": "debris",
-        "id": "feature_f8d6136576f447198644d93680a717e2",
-        "confidence": 1.0,
-        "category": "debris",
-        "source": "ground station",
-        "altitude_m": 96.42405,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.709809706924947,
-          37.9622729125616,
-          96.424046346917748
+          23.708019251449262,
+          37.960841944993113,
+          83.055415101349354
         ]
       }
     }
