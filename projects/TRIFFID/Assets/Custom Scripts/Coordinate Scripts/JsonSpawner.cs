@@ -226,16 +226,13 @@ public class JsonSpawner : MonoBehaviour
     {
         className = feature?.properties?.className?.Trim() ?? string.Empty;
 
-        if (IsDrawablePolygonClass(className))
+        if (XRControllerLogger.TryNormalizePolygonClass(className, out string drawableClass))
+        {
+            className = drawableClass;
             return true;
+        }
 
         return TryGetPrefabForClass(className, out _);
-    }
-
-    private static bool IsDrawablePolygonClass(string className)
-    {
-        return string.Equals(className, "safe", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(className, "unsafe", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizePrefabToken(string value)
@@ -3478,6 +3475,12 @@ public class JsonSpawner : MonoBehaviour
     {
         if (worldPositions == null || worldPositions.Count < 3) return null;
 
+        if (!XRControllerLogger.TryNormalizePolygonClass(className, out string normalizedClass))
+        {
+            Debug.LogWarning($"[JsonSpawner] Cannot save polygon: unsupported drawable class '{className ?? "<missing>"}'.");
+            return null;
+        }
+
         Transform parentRef = mapTransform != null ? mapTransform : transform;
 
         string newId = AllocateNextFeatureId();
@@ -3508,7 +3511,6 @@ public class JsonSpawner : MonoBehaviour
         JArray polygonCoords = new JArray { ring };
 
         string colorHex = "#" + ColorUtility.ToHtmlStringRGB(color);
-        string normalizedClass = string.Equals(className, "safe", StringComparison.OrdinalIgnoreCase) ? "safe" : "unsafe";
         const string normalizedCategory = "navigation";
 
         Feature newFeature = new Feature
@@ -3706,7 +3708,7 @@ public class JsonSpawner : MonoBehaviour
             if (data == null) data = node.gameObject.AddComponent<PointData>();
 
             data.lineColorHex = resolvedLineColorHex;
-            data.pointClass = feature.properties?.className ?? "unsafe";
+            data.pointClass = feature.properties?.className ?? string.Empty;
             data.pointID = feature.id ?? featureId;
             data.category = feature.properties?.category ?? "navigation";
             data.source = feature.properties?.source ?? "Ground Station";
