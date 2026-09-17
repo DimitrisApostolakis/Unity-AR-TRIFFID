@@ -135,6 +135,8 @@ public class JsonSpawner : MonoBehaviour
     }
 
     private List<NodeMapping> nodeMappings = new List<NodeMapping>();
+    private readonly HashSet<string> unsupportedSpawnClassesLogged =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     private void Awake()
     {
@@ -285,7 +287,7 @@ public class JsonSpawner : MonoBehaviour
             if (!hasColorPalette)
                 Debug.LogWarning("[JsonSpawner] Color palette is null or empty. Falling back to cyan for spawned geometry.");
 
-            HashSet<string> unsupportedClassesLogged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            unsupportedSpawnClassesLogged.Clear();
 
             foreach (Feature feature in currentRootData.features)
             {
@@ -297,24 +299,6 @@ public class JsonSpawner : MonoBehaviour
                 {
                     string featureId = feature?.id ?? feature?.properties?.id ?? $"index {colorIndex}";
                     Debug.LogWarning($"[JsonSpawner] Skipped malformed feature '{featureId}': {validationError}");
-                    colorIndex++;
-                    continue;
-                }
-
-                string featureClass = feature.properties?.className;
-                if (!TryGetPrefabForClass(featureClass, out _))
-                {
-                    string unsupportedClass = string.IsNullOrWhiteSpace(featureClass)
-                        ? "<missing>"
-                        : featureClass.Trim();
-
-                    if (unsupportedClassesLogged.Add(unsupportedClass))
-                    {
-                        Debug.LogWarning(
-                            $"[JsonSpawner] Unsupported class '{unsupportedClass}'. " +
-                            "All incoming points, lines, and polygons with this class will be skipped.");
-                    }
-
                     colorIndex++;
                     continue;
                 }
@@ -1497,9 +1481,42 @@ public class JsonSpawner : MonoBehaviour
         return !double.IsNaN(value) && !double.IsInfinity(value);
     }
 
+    private static bool RequiresDefinedClassForSpawn(Geometry geometry)
+    {
+        string geometryType = geometry?.type;
+        return string.Equals(geometryType, "Point", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(geometryType, "MultiPoint", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(geometryType, "Polygon", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(geometryType, "MultiPolygon", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool ShouldSkipUnsupportedClassGeometry(Geometry geometry, Feature feature)
+    {
+        if (!RequiresDefinedClassForSpawn(geometry))
+            return false;
+
+        string featureClass = feature?.properties?.className;
+        if (TryGetPrefabForClass(featureClass, out _))
+            return false;
+
+        string unsupportedClass = string.IsNullOrWhiteSpace(featureClass)
+            ? "<missing>"
+            : featureClass.Trim();
+
+        if (unsupportedSpawnClassesLogged.Add(unsupportedClass))
+        {
+            Debug.LogWarning(
+                $"[JsonSpawner] Unsupported class '{unsupportedClass}'. " +
+                "Incoming points and polygons with this class will be skipped.");
+        }
+
+        return true;
+    }
+
     private void ProcessGeometry(Geometry geom, Feature feature, Color color)
     {
-        if (geom == null) return;
+        if (geom == null || ShouldSkipUnsupportedClassGeometry(geom, feature))
+            return;
 
         if (geom.type == "GeometryCollection")
         {
