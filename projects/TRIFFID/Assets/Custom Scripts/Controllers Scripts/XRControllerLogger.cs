@@ -981,14 +981,19 @@ public class XRControllerLogger : MonoBehaviour
 
         Color lineColor = line != null && line.Renderer != null ? line.Renderer.startColor : GetCurrentColor();
 
-        Transform parentRef = GetAnnotationParent() ?? transform;
+        // Height baselines and live altitude deltas must use the same map frame
+        // as JsonSpawner for both line and polygon vertices.
+        Transform mapRef = jsonSpawner.mapTransform != null
+            ? jsonSpawner.mapTransform
+            : jsonSpawner.transform;
+
         foreach (Transform node in line.Nodes)
         {
             if (node == null)
                 continue;
 
             PointData pd = node.GetComponent<PointData>() ?? node.gameObject.AddComponent<PointData>();
-            Vector3 localPos = parentRef.InverseTransformPoint(node.position);
+            Vector3 localPos = mapRef.InverseTransformPoint(node.position);
             JsonSpawner.Vector3Double wgs = jsonSpawner.ColmapToWgs84(localPos);
 
             pd.lineColorHex = "#" + ColorUtility.ToHtmlStringRGB(lineColor);
@@ -1019,7 +1024,7 @@ public class XRControllerLogger : MonoBehaviour
 
             FloatingIcon icon = node.GetComponent<FloatingIcon>();
             if (icon != null)
-                icon.Setup(parentRef, jsonSpawner);
+                icon.Setup(mapRef, jsonSpawner);
 
             PulseEffect pulse = node.GetComponent<PulseEffect>() ?? node.GetComponentInChildren<PulseEffect>(true);
             jsonSpawner.infoPanel.RegisterMarker(pd, pulse);
