@@ -121,46 +121,105 @@ Then enter Play Mode
 
 ## Data Format
 
-The system uses GeoJSON format with extended properties for AR metadata:
+The application exchanges annotations as a GeoJSON `FeatureCollection`. Each feature uses the third coordinate as its absolute WGS84 altitude, while the extended height properties store the vertical distance above the configured map surface.
 
 ```json
 {
   "type": "FeatureCollection",
-  "lastModified": "2026-04-02 20:25:35",
   "features": [
     {
       "type": "Feature",
-      "id": "unique_id",
+      "id": "point_001",
       "properties": {
-        "class": "poi_type",
-        "id": "unique_id",
-        "confidence": 0.98,
-        "category": "classification",
-        "source": "data_source",
-        "altitude_m": 0.472,
-        "height_above_surface_m": 1.250,
-        "marker-color": "#FF0000"
+        "class": "tree",
+        "id": "point_001",
+        "confidence": 1.0,
+        "category": "environment",
+        "source": "ground station",
+        "altitude_m": 87.0964,
+        "height_above_surface_m": 4.5864,
+        "marker-color": "#00ff00"
       },
       "geometry": {
         "type": "Point",
-        "coordinates": [longitude, latitude, altitude]
+        "coordinates": [23.708222, 37.960960, 87.0964]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "line_001",
+      "properties": {
+        "class": "road",
+        "id": "line_001",
+        "confidence": 1.0,
+        "category": "navigation",
+        "source": "ground station",
+        "altitude_m": 87.4190,
+        "heights_above_surface_m": [8.1273, 13.6532, 5.8209],
+        "marker-color": "#0000ff"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [23.707925, 37.960138, 87.4190],
+          [23.708536, 37.960562, 87.8477],
+          [23.709371, 37.961113, 81.1797]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "polygon_001",
+      "properties": {
+        "class": "safe",
+        "id": "polygon_001",
+        "confidence": 1.0,
+        "category": "navigation",
+        "source": "ground station",
+        "altitude_m": 91.2,
+        "heights_above_surface_m": [
+          [5.2, 5.5, 4.9, 5.2]
+        ],
+        "marker-color": "#00ff00",
+        "fill": "#00ff00",
+        "fill-opacity": 0.25
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [23.707100, 37.960550, 91.2],
+            [23.707420, 37.960780, 91.5],
+            [23.707700, 37.960550, 90.9],
+            [23.707100, 37.960550, 91.2]
+          ]
+        ]
       }
     }
   ]
 }
 ```
 
-Supported geometry types:
+Supported geometry types are `Point`, `MultiPoint`, `LineString`, `MultiLineString`, `Polygon`, and `MultiPolygon`.
 
-```text
-Point
-LineString
-Polygon
-```
+### Identifiers and altitude fields
 
-For synchronization consistency, `feature.id` and `properties.id` should refer to the same annotation identifier.
+- `feature.id` and `properties.id` must contain the same annotation identifier.
+- Every coordinate is `[longitude, latitude, altitude]`, where altitude is the absolute WGS84 altitude used for coordinate conversion and spawning.
+- `altitude_m` stores the feature's reference absolute altitude.
+- A Point uses the scalar `height_above_surface_m`.
+- A LineString uses a flat `heights_above_surface_m` array aligned one-to-one with its coordinates.
+- A Polygon uses a nested `heights_above_surface_m` array aligned with its coordinate rings. A polygon ring must repeat its first coordinate as its final coordinate.
+- A height value may be `null` when no stored value is available and the surface raycast fails. Unity displays `-` for that value.
 
-For point features, `altitude_m` and the third coordinate retain the absolute WGS84 altitude used for coordinate conversion and spawning. `height_above_surface_m` stores the point's vertical height above the configured map mesh in metres and is the value displayed in the Unity information panel.
+### Class handling
+
+- Point and MultiPoint features are spawned only when `properties.class` matches an entry in `JsonSpawner.prefabEntries`.
+- LineString and MultiLineString features accept any non-empty class value; their class does not need a prefab mapping.
+- Polygon and MultiPolygon features are spawned only when their class is a drawable `XRControllerLogger.PolygonCategory` value (currently `safe` or `unsafe`) or matches an entry in `JsonSpawner.prefabEntries`.
+- Unsupported Point or Polygon classes are skipped and do not create fallback nodes, centroids, or line renderers.
+
+The server must return the top-level `FeatureCollection` object. A single `Feature` containing its own `features` array is not a valid response for this workflow.
 
 ## Notes on Local Synchronization
 
