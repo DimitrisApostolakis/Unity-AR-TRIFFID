@@ -1844,7 +1844,9 @@ public class JsonSpawner : MonoBehaviour
         if (pointTransform == null || parentRef == null || transformData == null)
             return false;
 
-        Vector3 pointLocalPosition = GetStableMapLocalPosition(pointTransform, parentRef);
+        // Height must follow the actual runtime transform. FloatingIcon.localMapPoint
+        // can be stale when another interactable/relay moves the marker.
+        Vector3 pointLocalPosition = parentRef.InverseTransformPoint(pointTransform.position);
         Vector3 pointWorldPosition = parentRef.TransformPoint(pointLocalPosition);
         Vector3 castAxis = GetWorldAltitudeAxis(parentRef);
 
