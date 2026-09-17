@@ -222,6 +222,12 @@ public class JsonSpawner : MonoBehaviour
         return false;
     }
 
+    private bool HasSupportedPolygonClass(Feature feature, out string className)
+    {
+        className = feature?.properties?.className?.Trim() ?? string.Empty;
+        return TryGetPrefabForClass(className, out _);
+    }
+
     private static string NormalizePrefabToken(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -1492,6 +1498,18 @@ public class JsonSpawner : MonoBehaviour
         if (geom.coordinates == null) return;
         JArray coords = geom.coordinates as JArray;
         if (coords == null) return;
+
+        bool isPolygonGeometry =
+            string.Equals(geom.type, "Polygon", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(geom.type, "MultiPolygon", StringComparison.OrdinalIgnoreCase);
+
+        if (isPolygonGeometry && !HasSupportedPolygonClass(feature, out string polygonClassName))
+        {
+            string displayedClass = string.IsNullOrWhiteSpace(polygonClassName) ? "<missing>" : polygonClassName;
+            string featureId = feature?.id ?? feature?.properties?.id ?? "<missing>";
+            Debug.LogWarning($"[JsonSpawner] Skipping {geom.type} feature '{featureId}': unsupported class '{displayedClass}'.");
+            return;
+        }
 
         switch (geom.type)
         {
