@@ -92,7 +92,10 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
 
     private void OnSelectExited(SelectExitEventArgs args)
     {
-        if (floatingIcon != null)
+        // Let FloatingIcon own the final sync only when it is actually
+        // handling this manipulation. Some runtime markers have a FloatingIcon
+        // component but use a different XRBaseInteractable wired through this relay.
+        if (floatingIcon != null && floatingIcon.IsBeingManipulated)
         {
             isManipulating = false;
             return;
@@ -136,7 +139,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
         if (!isManipulating)
             return;
 
-        if (floatingIcon != null)
+        if (floatingIcon != null && floatingIcon.IsBeingManipulated)
             return;
 
         ResolveSpawner();
