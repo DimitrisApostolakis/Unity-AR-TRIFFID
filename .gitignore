@@ -68,3 +68,12 @@ __pycache__/
 *.tmp
 *.log
 
+
+# Local settings (RabbitMQ broker and credentials, samba folder) — never commit.
+.env
+
+# Job files arriving through the shared folder, and what the AR watcher generates from them.
+/samba_folder/*
+!/samba_folder/.gitkeep
+/projects/**/Assets/TriffidJobs/
+/projects/**/Assets/TriffidJobs.meta
