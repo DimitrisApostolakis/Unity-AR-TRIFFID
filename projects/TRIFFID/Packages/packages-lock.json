@@ -403,6 +403,42 @@
         "com.unity.mathematics": "1.2.6"
       }
     },
+    "org.nuget.microsoft.bcl.asyncinterfaces": {
+      "version": "file:Microsoft.Bcl.AsyncInterfaces",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
+    "org.nuget.rabbitmq.client": {
+      "version": "file:RabbitMQ.Client",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
+    "org.nuget.system.diagnostics.diagnosticsource": {
+      "version": "file:System.Diagnostics.DiagnosticSource",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
+    "org.nuget.system.io.pipelines": {
+      "version": "file:System.IO.Pipelines",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
+    "org.nuget.system.threading.channels": {
+      "version": "file:System.Threading.Channels",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
+    "org.nuget.system.threading.ratelimiting": {
+      "version": "file:System.Threading.RateLimiting",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
       "depth": 0,

@@ -1,0 +1,40 @@
+{
+    "managedList": [
+        {
+            "packageName": "RabbitMQ.Client",
+            "fileNames": [
+                "RabbitMQ.Client"
+            ]
+        },
+        {
+            "packageName": "Microsoft.Bcl.AsyncInterfaces",
+            "fileNames": [
+                "Microsoft.Bcl.AsyncInterfaces"
+            ]
+        },
+        {
+            "packageName": "System.Diagnostics.DiagnosticSource",
+            "fileNames": [
+                "System.Diagnostics.DiagnosticSource"
+            ]
+        },
+        {
+            "packageName": "System.IO.Pipelines",
+            "fileNames": [
+                "System.IO.Pipelines"
+            ]
+        },
+        {
+            "packageName": "System.Threading.Channels",
+            "fileNames": [
+                "System.Threading.Channels"
+            ]
+        },
+        {
+            "packageName": "System.Threading.RateLimiting",
+            "fileNames": [
+                "System.Threading.RateLimiting"
+            ]
+        }
+    ]
+}

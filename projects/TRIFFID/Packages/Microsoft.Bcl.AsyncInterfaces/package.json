@@ -1,0 +1,15 @@
+{
+    "name": "org.nuget.microsoft.bcl.asyncinterfaces",
+    "version": "8.0.0",
+    "displayName": "Microsoft.Bcl.AsyncInterfaces",
+    "description": "Provides the IAsyncEnumerable<T> and IAsyncDisposable interfaces and helper types for .NET Standard 2.0. This package is not required starting with .NET Standard 2.1 and .NET Core 3.0.\n\nCommonly Used Types:\nSystem.IAsyncDisposable\nSystem.Collections.Generic.IAsyncEnumerable\nSystem.Collections.Generic.IAsyncEnumerator",
+    "unity": "2018.3",
+    "keywords": [
+        ""
+    ],
+    "author": {
+        "name": "Microsoft",
+        "email": "",
+        "url": "https://dot.net/"
+    }
+}

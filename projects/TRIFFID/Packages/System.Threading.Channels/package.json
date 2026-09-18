@@ -1,0 +1,15 @@
+{
+    "name": "org.nuget.system.threading.channels",
+    "version": "8.0.0",
+    "displayName": "System.Threading.Channels",
+    "description": "Provides types for passing data between producers and consumers.\n\nCommonly Used Types:\nSystem.Threading.Channel\nSystem.Threading.Channel<T>",
+    "unity": "2018.3",
+    "keywords": [
+        ""
+    ],
+    "author": {
+        "name": "Microsoft",
+        "email": "",
+        "url": "https://dot.net/"
+    }
+}

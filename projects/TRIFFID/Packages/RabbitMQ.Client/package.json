@@ -1,0 +1,16 @@
+{
+    "name": "org.nuget.rabbitmq.client",
+    "version": "7.2.1",
+    "displayName": "RabbitMQ.Client",
+    "description": "The RabbitMQ .NET client is the official client library for C# (and, implicitly, other .NET languages)",
+    "unity": "2018.3",
+    "keywords": [
+        "rabbitmq",
+        "amqp"
+    ],
+    "author": {
+        "name": "Broadcom",
+        "email": "",
+        "url": "https://www.rabbitmq.com/dotnet.html"
+    }
+}

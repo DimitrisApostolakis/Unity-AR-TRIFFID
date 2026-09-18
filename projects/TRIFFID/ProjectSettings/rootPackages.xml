@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<packages xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <package ID="RabbitMQ.Client" Version="7.2.1" TargetFramework="netstandard2.0" AllowedVersions="[7.2.1]" />
+</packages>
