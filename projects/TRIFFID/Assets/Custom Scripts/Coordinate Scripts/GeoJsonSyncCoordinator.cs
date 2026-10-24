@@ -11,29 +11,6 @@ using UnityEngine;
 [RequireComponent(typeof(JsonSpawner))]
 public class GeoJsonSyncCoordinator : MonoBehaviour
 {
-    private enum OpType
-    {
-        Create,
-        Update,
-        Delete
-    }
-
-    private enum LocalWriteResult
-    {
-        Success,
-        LocalStateChanged,
-        Failed
-    }
-
-    private sealed class PendingOp
-    {
-        public OpType Type;
-        public string Id;
-        public string ConfirmedRemoteId;
-        public int Attempt;
-        public DateTime NotBeforeUtc;
-    }
-
     [Header("References")]
     [Tooltip("Local GeoJSON runtime owner used for path resolution, spawning, and guarded file commits.")]
     [SerializeField] private JsonSpawner jsonSpawner;
@@ -95,8 +72,6 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
     [SerializeField] private int remoteRefreshStatusValue = 0;
 
     [Header("Refresh Safety")]
-    [Tooltip("Defers remote refresh while a marker is actively being manipulated.")]
-    [SerializeField] private bool skipRefreshWhileManipulating = true;
     [Min(0f)]
     [Tooltip("Grace period in seconds during which normal remote refresh waits after a local change.")]
     [SerializeField] private float localChangeGraceSeconds = 1.5f;
@@ -109,1468 +84,396 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
     [Tooltip("Removes duplicate features from a fetched snapshot before it is applied locally.")]
     [SerializeField] private bool deduplicateFetchedFeatures = true;
 
-    private readonly Queue<PendingOp> queue = new Queue<PendingOp>();
-    private readonly Dictionary<string, int> updateDebounceTokens = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> idMapLocalToRemote = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-    private bool queueRunning;
-    private bool suppressLocalWatcher;
-    private Coroutine localWatcherRoutine;
-    private Coroutine remotePollingRoutine;
-    private Coroutine latestMqttPollingRoutine;
+    [Header("Conflict resolution")]
+    [Tooltip("Feature ID used by the Keep Local, Accept Server, and Restore Deletion context-menu actions.")]
+    [SerializeField] private string resolutionFeatureId;
 
+    private bool refreshRequested;
+    private bool restorePendingState;
+    private DateTime nextRemoteCheck;
     private string saveFileAbsolutePath;
-    private Root lastLocalRoot;
-    private string lastLocalJsonHash = string.Empty;
-    private string lastRemoteJsonHash = string.Empty;
+    private int lastObservedLocalVersion = -1;
     private DateTime lastLocalChangeUtc = DateTime.MinValue;
-    private bool remoteRefreshInProgress;
-    private bool queuedRefresh;
-    private bool queuedForceRefresh;
-    private Coroutine deferredRefreshRoutine;
-    private bool hasUnresolvedLocalSyncFailure;
-
+    public string LastStatus { get; private set; }
     public event Action<string> OnSyncStatus;
+
+    private sealed class Response
+    {
+        public bool completed;
+        public bool ok;
+        public string message;
+        public string remoteId;
+        public Root root;
+        public MqttLatestResponse latest;
+        public bool hasExternalUpdates;
+    }
 
     private void Awake()
     {
-        if (jsonSpawner == null)
-            jsonSpawner = GetComponent<JsonSpawner>();
-
-        if (apiManager == null)
-            apiManager = GetComponent<GeoJsonApiManager>();
-
-        RefreshSaveFileAbsolutePath();
-        ValidateConfiguration();
-    }
-
-    private void ValidateConfiguration()
-    {
-        if (jsonSpawner == null)
-        {
-            Debug.LogError("[GeoJsonSyncCoordinator] JsonSpawner is missing; local synchronization cannot run.", this);
-        }
-        else if (string.IsNullOrWhiteSpace(saveFileAbsolutePath))
-        {
-            Debug.LogError("[GeoJsonSyncCoordinator] Shared GeoJSON save path is empty.", this);
-        }
-
-        if (apiManager == null)
-            Debug.LogError("[GeoJsonSyncCoordinator] GeoJsonApiManager is missing; remote synchronization cannot run.", this);
-
-        if (!IsFinite(localScanIntervalSeconds) || localScanIntervalSeconds <= 0f)
-            Debug.LogWarning("[GeoJsonSyncCoordinator] localScanIntervalSeconds must be positive.", this);
-
-        if (!IsFinite(updateDebounceSeconds) || updateDebounceSeconds < 0f)
-            Debug.LogWarning("[GeoJsonSyncCoordinator] updateDebounceSeconds must be finite and non-negative.", this);
-
-        if (maxRetries < 0)
-            Debug.LogWarning("[GeoJsonSyncCoordinator] maxRetries must be non-negative.", this);
-
-        if (!IsFinite(retryBaseDelaySeconds) || retryBaseDelaySeconds < 0f)
-            Debug.LogWarning("[GeoJsonSyncCoordinator] retryBaseDelaySeconds must be finite and non-negative.", this);
-
-        if (!IsFinite(retryMaxDelaySeconds) || retryMaxDelaySeconds < 0f)
-            Debug.LogWarning("[GeoJsonSyncCoordinator] retryMaxDelaySeconds must be finite and non-negative.", this);
-
-        if (enableRemotePolling && (!IsFinite(remotePollingIntervalSeconds) || remotePollingIntervalSeconds <= 0f))
-            Debug.LogWarning("[GeoJsonSyncCoordinator] remotePollingIntervalSeconds must be positive when remote polling is enabled.", this);
-
-        if (enableLatestMqttPolling && (!IsFinite(latestMqttPollingIntervalSeconds) || latestMqttPollingIntervalSeconds <= 0f))
-            Debug.LogWarning("[GeoJsonSyncCoordinator] latestMqttPollingIntervalSeconds must be positive when MQTT polling is enabled.", this);
-
-        if (!IsFinite(apiCallbackTimeoutSeconds) || apiCallbackTimeoutSeconds <= 0f)
-            Debug.LogWarning("[GeoJsonSyncCoordinator] apiCallbackTimeoutSeconds must be positive.", this);
-    }
-
-    private static bool IsFinite(float value)
-    {
-        return !float.IsNaN(value) && !float.IsInfinity(value);
+        if (jsonSpawner == null) jsonSpawner = GetComponent<JsonSpawner>();
+        if (apiManager == null) apiManager = GetComponent<GeoJsonApiManager>();
+        saveFileAbsolutePath = jsonSpawner == null ? null : jsonSpawner.GetResolvedSaveFilePath();
     }
 
     private void OnEnable()
     {
-        RefreshSaveFileAbsolutePath();
-
-        if (!string.IsNullOrWhiteSpace(saveFileAbsolutePath) && File.Exists(saveFileAbsolutePath))
-            TryLoadLocalSnapshot(out lastLocalRoot, out lastLocalJsonHash);
-
-        lastLocalChangeUtc = DateTime.UtcNow;
-
-        localWatcherRoutine = StartCoroutine(LocalFileWatcherLoop());
-
-        if (enableRemotePolling)
-            remotePollingRoutine = StartCoroutine(RemotePollingLoop());
-
-        if (enableLatestMqttPolling)
-            latestMqttPollingRoutine = StartCoroutine(LatestMqttPollingLoop());
-
-        if (loadFromServerOnEnable)
-            StartCoroutine(InitialLoadFromServer());
-
-        if (queuedRefresh && deferredRefreshRoutine == null)
-            deferredRefreshRoutine = StartCoroutine(DeferredRefreshLoop());
-    }
-
-    private void RefreshSaveFileAbsolutePath()
-    {
-        if (jsonSpawner == null)
-            jsonSpawner = GetComponent<JsonSpawner>();
-
-        saveFileAbsolutePath = jsonSpawner != null
-            ? jsonSpawner.GetResolvedSaveFilePath()
-            : string.Empty;
+        Awake();
+        restorePendingState = true;
+        refreshRequested = loadFromServerOnEnable;
+        nextRemoteCheck = DateTime.UtcNow;
+        StartCoroutine(Synchronize());
+        if (enableLatestMqttPolling) StartCoroutine(LatestMqttLoop());
     }
 
     private void OnDisable()
     {
-        if (localWatcherRoutine != null)
-            StopCoroutine(localWatcherRoutine);
-
-        if (remotePollingRoutine != null)
-            StopCoroutine(remotePollingRoutine);
-
-        if (latestMqttPollingRoutine != null)
-            StopCoroutine(latestMqttPollingRoutine);
-
-        if (deferredRefreshRoutine != null)
-        {
-            StopCoroutine(deferredRefreshRoutine);
-            deferredRefreshRoutine = null;
-        }
+        // In-flight state is already durable. A stopped create is reconciled on
+        // the next enable instead of being submitted a second time blindly.
+        StopAllCoroutines();
     }
 
     [ContextMenu("Sync/Initial Load From Server")]
-    public void LoadFromServer()
-    {
-        StartCoroutine(InitialLoadFromServer());
-    }
+    public void LoadFromServer() { refreshRequested = true; }
 
     [ContextMenu("Sync/Refresh From Server")]
-    public void RefreshFromServer()
+    public void RefreshFromServer() { refreshRequested = true; }
+
+    [ContextMenu("Sync/Retry Pending Edits")]
+    public void RetryPendingEdits()
     {
-        StartCoroutine(RefreshRemote(forceApply: true));
+        MutateLocal(root => GeoJsonOutbox.Retry(root), false);
+        refreshRequested = true;
     }
 
-    private IEnumerator InitialLoadFromServer()
+    [ContextMenu("Sync/Resolve Selected Feature - Keep Local")]
+    public void KeepLocalVersion() { ResolveConflict(resolutionFeatureId, true); }
+
+    [ContextMenu("Sync/Resolve Selected Feature - Accept Server")]
+    public void AcceptServerVersion() { ResolveConflict(resolutionFeatureId, false); }
+
+    [ContextMenu("Sync/Restore Pending Deletion")]
+    public void RestorePendingDeletion()
     {
-        yield return RefreshRemote(forceApply: true);
+        MutateLocal(root => GeoJsonOutbox.RestoreDeletion(root, resolutionFeatureId), true);
     }
 
-    private IEnumerator LocalFileWatcherLoop()
+    public void ResolveConflict(string featureId, bool keepLocal)
+    {
+        if (string.IsNullOrWhiteSpace(featureId)) { NotifyStatus("Select a feature ID for conflict resolution."); return; }
+        // Explicit Keep Local can recreate an unconfirmed create. The UI labels
+        // this state separately because servers without idempotency cannot offer
+        // an exactly-once guarantee after an ambiguous request outcome.
+        MutateLocal(root => GeoJsonOutbox.Resolve(root, featureId, keepLocal), true);
+        refreshRequested = true;
+    }
+
+    private void MutateLocal(Action<Root> mutation, bool respawn)
+    {
+        if (IsLocalBusy()) { NotifyStatus("Finish the current move or local save before resolving synchronization."); return; }
+        Root root;
+        if (!Read(out root)) return;
+        int version = jsonSpawner.LocalPersistenceVersion;
+        mutation(root);
+        Commit(root, version, respawn);
+    }
+
+    private bool IsLocalBusy()
+    {
+        return jsonSpawner == null || jsonSpawner.HasPendingLocalPersistence || HasActiveManipulation();
+    }
+
+    private IEnumerator Synchronize()
     {
         while (true)
         {
-            yield return new WaitForSeconds(Mathf.Max(0.05f, localScanIntervalSeconds));
-
-            if (suppressLocalWatcher)
-                continue;
-
-            if (string.IsNullOrWhiteSpace(saveFileAbsolutePath) || !File.Exists(saveFileAbsolutePath))
-                continue;
-
-            if (!TryReadLocalJson(out string currentJson, out string currentHash))
-                continue;
-
-            if (string.Equals(currentHash, lastLocalJsonHash, StringComparison.Ordinal))
-                continue;
-
-            if (!TryDeserializeLocalSnapshot(currentJson, out Root currentRoot))
-                continue;
-
-            if (lastLocalRoot != null)
-                DetectAndQueueLocalChanges(lastLocalRoot, currentRoot);
-
-            lastLocalRoot = currentRoot;
-            lastLocalJsonHash = currentHash;
-            MarkLocalChangeObserved();
-
-            if (!queueRunning && queue.Count > 0)
-                StartCoroutine(ProcessQueue());
-        }
-    }
-
-    private void DetectAndQueueLocalChanges(Root oldRoot, Root newRoot)
-    {
-        Dictionary<string, Feature> oldById = BuildFeatureMap(oldRoot);
-        Dictionary<string, Feature> newById = BuildFeatureMap(newRoot);
-
-        foreach (KeyValuePair<string, Feature> kv in newById)
-        {
-            string id = kv.Key;
-            Feature next = kv.Value;
-
-            if (!oldById.TryGetValue(id, out Feature prev))
+            yield return new WaitForSecondsRealtime(Mathf.Max(0.05f, localScanIntervalSeconds));
+            if (apiManager == null || IsLocalBusy()) continue;
+            if (lastObservedLocalVersion != jsonSpawner.LocalPersistenceVersion)
             {
-                QueueOp(OpType.Create, id);
-                continue;
+                lastObservedLocalVersion = jsonSpawner.LocalPersistenceVersion;
+                lastLocalChangeUtc = DateTime.UtcNow;
             }
+            Root local;
+            if (!Read(out local)) continue;
+            int version = jsonSpawner.LocalPersistenceVersion;
+            string before = JsonConvert.SerializeObject(local);
+            if (restorePendingState) GeoJsonOutbox.RestoreAfterRestart(local);
+            GeoJsonOutbox.CaptureChanges(local, DateTime.UtcNow, updateDebounceSeconds);
+            if (before != JsonConvert.SerializeObject(local) && !Commit(local, version, false)) continue;
+            restorePendingState = false;
 
-            if (!AreFeaturesEquivalent(prev, next))
-                DebounceUpdate(id);
-        }
-
-        foreach (KeyValuePair<string, Feature> kv in oldById)
-        {
-            if (!newById.ContainsKey(kv.Key))
-                QueueOp(OpType.Delete, kv.Key);
-        }
-    }
-
-    private void QueueOp(OpType type, string id)
-    {
-        if (string.IsNullOrWhiteSpace(id))
-            return;
-
-        queue.Enqueue(new PendingOp
-        {
-            Type = type,
-            Id = id,
-            Attempt = 0,
-            NotBeforeUtc = DateTime.UtcNow
-        });
-    }
-
-    private void DebounceUpdate(string id)
-    {
-        int token = 1;
-        if (updateDebounceTokens.TryGetValue(id, out int existing))
-            token = existing + 1;
-
-        updateDebounceTokens[id] = token;
-        StartCoroutine(DebouncedUpdate(id, token));
-    }
-
-    private IEnumerator DebouncedUpdate(string id, int token)
-    {
-        yield return new WaitForSeconds(Mathf.Max(0.05f, updateDebounceSeconds));
-
-        if (!updateDebounceTokens.TryGetValue(id, out int current) || current != token)
-            yield break;
-
-        updateDebounceTokens.Remove(id);
-        QueueOp(OpType.Update, id);
-
-        if (!queueRunning)
-            StartCoroutine(ProcessQueue());
-    }
-
-    private IEnumerator ProcessQueue()
-    {
-        queueRunning = true;
-
-        while (queue.Count > 0)
-        {
-            PendingOp op = queue.Dequeue();
-
-            TimeSpan wait = op.NotBeforeUtc - DateTime.UtcNow;
-            if (wait.TotalMilliseconds > 1)
-                yield return new WaitForSeconds((float)wait.TotalSeconds);
-
-            bool done = false;
-            bool ok = false;
-            string msg = string.Empty;
-
-            yield return ExecuteOp(op, (success, message) =>
+            GeoJsonPendingEdit candidate = GeoJsonOutbox.Next(local, DateTime.UtcNow);
+            bool reconciliationNeeded = local.syncState.pending.Any(p => p.status == "reconcile");
+            bool checkRemote = refreshRequested || candidate != null ||
+                (enableRemotePolling && DateTime.UtcNow >= nextRemoteCheck) ||
+                (reconciliationNeeded && DateTime.UtcNow >= nextRemoteCheck);
+            if (!checkRemote) { ReportPending(local); continue; }
+            if (candidate == null && !refreshRequested && !reconciliationNeeded)
             {
-                done = true;
-                ok = success;
-                msg = message;
-            });
-
-            if (!done || !ok)
-            {
-                Retry(op, done ? msg : "operation not completed");
-                continue;
-            }
-
-            if (verboseLogs)
-                Debug.Log($"[GeoJsonSyncCoordinator] Synced {op.Type} id={op.Id}");
-        }
-
-        queueRunning = false;
-    }
-
-    private void Retry(PendingOp op, string reason)
-    {
-        op.Attempt++;
-
-        if (op.Attempt <= Mathf.Max(0, maxRetries))
-        {
-            float delay = Mathf.Min(
-                Mathf.Max(0.1f, retryBaseDelaySeconds) * Mathf.Pow(2f, op.Attempt - 1),
-                Mathf.Max(retryMaxDelaySeconds, retryBaseDelaySeconds)
-            );
-
-            op.NotBeforeUtc = DateTime.UtcNow.AddSeconds(delay);
-            queue.Enqueue(op);
-
-            if (!queueRunning)
-                StartCoroutine(ProcessQueue());
-
-            if (verboseLogs)
-                Debug.LogWarning($"[GeoJsonSyncCoordinator] Retry #{op.Attempt} for {op.Type} id={op.Id} in {delay:F2}s. Reason: {reason}");
-
-            return;
-        }
-
-        hasUnresolvedLocalSyncFailure = true;
-        NotifyStatus("Synchronization failed");
-        Debug.LogWarning($"[GeoJsonSyncCoordinator] Dropped {op.Type} id={op.Id} after retries. Reason: {reason}");
-    }
-
-    private IEnumerator ExecuteOp(PendingOp op, Action<bool, string> callback)
-    {
-        if (apiManager == null || jsonSpawner == null)
-        {
-            callback?.Invoke(false, "Missing references");
-            yield break;
-        }
-
-        if (!TryLoadLocalSnapshot(out Root localRoot, out _))
-        {
-            callback?.Invoke(false, "Cannot read local JSON");
-            yield break;
-        }
-
-        Dictionary<string, Feature> byId = BuildFeatureMap(localRoot);
-
-        if (op.Type == OpType.Delete)
-        {
-            string remoteId = ResolveRemoteId(op.Id);
-            if (string.IsNullOrWhiteSpace(remoteId))
-                remoteId = op.Id;
-
-            bool deleteOk = false;
-            string deleteMsg = string.Empty;
-            yield return ApiDelete(remoteId, (ok, msg) =>
-            {
-                deleteOk = ok;
-                deleteMsg = msg;
-            });
-
-            if (deleteOk)
-            {
-                UnmapId(op.Id);
-                yield return NotifyStatusEndpointForLocalChange();
-            }
-
-            callback?.Invoke(deleteOk, deleteMsg);
-            yield break;
-        }
-
-        bool createAlreadyConfirmed = op.Type == OpType.Create &&
-                                      !string.IsNullOrWhiteSpace(op.ConfirmedRemoteId);
-        bool hasLocalFeature = byId.TryGetValue(op.Id, out Feature feature) && feature != null;
-
-        if (!hasLocalFeature && !createAlreadyConfirmed)
-        {
-            callback?.Invoke(op.Type == OpType.Update, op.Type == OpType.Update ? "Feature removed locally" : "Feature missing locally");
-            yield break;
-        }
-
-        if (!createAlreadyConfirmed && !IsFeatureValidForSync(feature))
-        {
-            callback?.Invoke(false, "Invalid coordinates");
-            yield break;
-        }
-
-        if (op.Type == OpType.Create)
-        {
-            if (!createAlreadyConfirmed)
-            {
-                bool done = false;
-                bool ok = false;
-                string remoteId = null;
-
-                yield return ApiCreate(feature, (success, returnedId, _raw) =>
+                if ((DateTime.UtcNow - lastLocalChangeUtc).TotalSeconds < Math.Max(0f, localChangeGraceSeconds)) continue;
+                if (fetchOnlyWhenExternalUpdates)
                 {
-                    done = true;
-                    ok = success;
-                    remoteId = returnedId;
-                });
-
-                if (!done || !ok)
-                {
-                    callback?.Invoke(false, "Create API failed");
-                    yield break;
-                }
-
-                if (string.IsNullOrWhiteSpace(remoteId))
-                {
-                    callback?.Invoke(false, "Create API did not return feature.id");
-                    yield break;
-                }
-
-                op.ConfirmedRemoteId = remoteId.Trim();
-            }
-
-            string resolved = op.ConfirmedRemoteId;
-
-            if (!string.Equals(op.Id, resolved, StringComparison.OrdinalIgnoreCase))
-            {
-                bool rewriteDone = false;
-                bool rewriteOk = false;
-                string rewriteMessage = string.Empty;
-
-                yield return RewriteLocalFeatureId(op.Id, resolved, (success, message) =>
-                {
-                    rewriteDone = true;
-                    rewriteOk = success;
-                    rewriteMessage = message;
-                });
-
-                if (!rewriteDone || !rewriteOk)
-                {
-                    callback?.Invoke(false, rewriteDone ? rewriteMessage : "Local ID rewrite did not complete");
-                    yield break;
-                }
-            }
-            else
-            {
-                MapId(op.Id, resolved);
-            }
-
-            yield return NotifyStatusEndpointForLocalChange();
-            callback?.Invoke(true, "OK");
-            yield break;
-        }
-
-        if (op.Type == OpType.Update)
-        {
-            string canonicalId = feature.id;
-            if (string.IsNullOrWhiteSpace(canonicalId))
-            {
-                callback?.Invoke(false, "Feature missing top-level id for PATCH");
-                yield break;
-            }
-
-            string remoteId = ResolveRemoteId(canonicalId);
-            if (string.IsNullOrWhiteSpace(remoteId))
-                remoteId = canonicalId;
-
-            bool updateOk = false;
-            string updateMsg = string.Empty;
-            yield return ApiUpdate(remoteId, feature, (ok, msg) =>
-            {
-                updateOk = ok;
-                updateMsg = msg;
-            });
-
-            if (updateOk)
-                yield return NotifyStatusEndpointForLocalChange();
-
-            callback?.Invoke(updateOk, updateMsg);
-            yield break;
-        }
-
-        callback?.Invoke(false, "Unknown operation");
-    }
-
-    private IEnumerator RemotePollingLoop()
-    {
-        while (enableRemotePolling)
-        {
-            yield return new WaitForSeconds(Mathf.Max(2f, remotePollingIntervalSeconds));
-
-            if (fetchOnlyWhenExternalUpdates)
-            {
-                bool statusDone = false;
-                bool hasExternalUpdates = false;
-                string statusMessage = string.Empty;
-
-                yield return CheckExternalUpdates((done, hasUpdates, message) =>
-                {
-                    statusDone = done;
-                    hasExternalUpdates = hasUpdates;
-                    statusMessage = message;
-                });
-
-                if (!statusDone)
-                {
-                    if (!fallbackToFetchWhenStatusUnavailable)
+                    Response status = new Response();
+                    apiManager.GetCurrentStatus((ok, message, value) =>
                     {
-                        if (verboseLogs)
-                            Debug.LogWarning("[GeoJsonSyncCoordinator] Skipped polling refresh: status endpoint unavailable.");
+                        status.ok = ok; status.message = message;
+                        status.hasExternalUpdates = value != null && (value.fe_updated > 0 || value.mobile_updated > 0);
+                        status.completed = true;
+                    });
+                    yield return Wait(status, null);
+                    if ((status.ok && !status.hasExternalUpdates) || (!status.ok && !fallbackToFetchWhenStatusUnavailable))
+                    {
+                        nextRemoteCheck = DateTime.UtcNow.AddSeconds(Mathf.Max(2f, remotePollingIntervalSeconds));
                         continue;
                     }
-
-                    if (verboseLogs)
-                        Debug.LogWarning($"[GeoJsonSyncCoordinator] Status check unavailable; proceeding with fetch. Reason: {statusMessage}");
-                }
-                else if (!hasExternalUpdates)
-                {
-                    if (verboseLogs)
-                        Debug.Log("[GeoJsonSyncCoordinator] Skipped polling refresh: no FE/mobile updates.");
-                    continue;
                 }
             }
 
-            yield return RefreshRemote(forceApply: false);
-        }
-    }
-
-    private IEnumerator LatestMqttPollingLoop()
-    {
-        while (enableLatestMqttPolling)
-        {
-            yield return new WaitForSeconds(Mathf.Max(1f, latestMqttPollingIntervalSeconds));
-            yield return RefreshLatestMqttIcon();
-        }
-    }
-
-    private IEnumerator RefreshRemote(bool forceApply)
-    {
-        if (apiManager == null || jsonSpawner == null)
-            yield break;
-
-        if (remoteRefreshInProgress)
-        {
-            QueueDeferredRefresh(forceApply, "another remote refresh is already in progress");
-            yield break;
-        }
-
-        if (IsRefreshSafetyBlocked(forceApply, out string initialBlockReason))
-        {
-            QueueDeferredRefresh(forceApply, initialBlockReason);
-            yield break;
-        }
-
-        remoteRefreshInProgress = true;
-        try
-        {
-            int expectedLocalVersion = jsonSpawner.LocalPersistenceVersion;
-
-            bool done = false;
-            bool ok = false;
-            string msg = string.Empty;
-            Root remoteRoot = null;
-
-            yield return ApiFetch((success, message, root) =>
+            // Always compare with the server before a write. This detects an
+            // observed conflicting edit; atomic concurrent-write protection also
+            // needs conditional version support from the server.
+            version = jsonSpawner.LocalPersistenceVersion;
+            Response fetch = new Response();
+            yield return Fetch(fetch);
+            nextRemoteCheck = DateTime.UtcNow.AddSeconds(Mathf.Max(2f, remotePollingIntervalSeconds));
+            refreshRequested = false;
+            if (!fetch.ok || fetch.root == null)
             {
-                done = true;
-                ok = success;
-                msg = message;
-                remoteRoot = root;
-            });
-
-            if (!done || !ok || remoteRoot == null)
-            {
-                if (forceApply)
-                    NotifyStatus("Synchronization failed");
-                if (verboseLogs)
-                    Debug.LogWarning($"[GeoJsonSyncCoordinator] Refresh failed: {msg}");
-                yield break;
+                NotifyStatus("Connection unavailable. Local edits remain pending.");
+                // Do not mark an operation as sent when the preliminary GET
+                // could not connect. Offline creates remain safely retryable.
+                yield return new WaitForSecondsRealtime(Mathf.Max(0.75f, retryBaseDelaySeconds));
+                continue;
             }
-
-            CanonicalizeRoot(remoteRoot);
-            if (deduplicateFetchedFeatures)
-            {
-                int removed = DeduplicateFeatures(remoteRoot);
-                if (removed > 0 && verboseLogs)
-                    Debug.LogWarning($"[GeoJsonSyncCoordinator] Removed {removed} duplicate feature(s) from remote payload before apply.");
-            }
-
-            string remoteJson = JsonConvert.SerializeObject(remoteRoot, Formatting.Indented);
-            string remoteHash = Hash128.Compute(remoteJson).ToString();
-
-            if (!forceApply && string.Equals(remoteHash, lastRemoteJsonHash, StringComparison.Ordinal))
-                yield break;
-
-            if (IsRefreshSafetyBlocked(forceApply, out string commitBlockReason))
-            {
-                QueueDeferredRefresh(forceApply, commitBlockReason);
-                yield break;
-            }
-
-            suppressLocalWatcher = true;
+            if (IsLocalBusy() || version != jsonSpawner.LocalPersistenceVersion)
+            { refreshRequested = true; continue; }
+            if (!Read(out local)) continue;
+            string originalFeatures = JsonConvert.SerializeObject(local.features);
+            bool merged = false;
+            string mergeError = null;
             try
             {
-                LocalWriteResult writeResult = WriteLocalJson(remoteJson, expectedLocalVersion);
-                if (writeResult == LocalWriteResult.LocalStateChanged)
-                {
-                    QueueDeferredRefresh(forceApply, "local persistence changed while the remote snapshot was being fetched");
-                    yield break;
-                }
-
-                if (writeResult == LocalWriteResult.Failed)
-                {
-                    NotifyStatus("Synchronization failed");
-                    yield break;
-                }
-
-                jsonSpawner.SpawnFromJson();
+                if (deduplicateFetchedFeatures) RemoveIdenticalDuplicates(fetch.root);
+                merged = GeoJsonOutbox.MergeRemote(local, fetch.root);
             }
-            finally
+            catch (Exception ex) { mergeError = ex.Message; }
+            if (mergeError != null) { NotifyStatus("Server comparison failed: " + mergeError); continue; }
+            bool contentChanged = originalFeatures != JsonConvert.SerializeObject(local.features);
+            if (merged && !Commit(local, version, contentChanged)) continue;
+            if (merged && resetArUpdatedAfterRemoteRefresh) yield return NotifyServerOfRemoteRefresh();
+            if (contentChanged || IsLocalBusy()) continue;
+
+            if (!Read(out local)) continue;
+            candidate = GeoJsonOutbox.Next(local, DateTime.UtcNow);
+            if (candidate == null) { ReportPending(local); continue; }
+            if (candidate.kind != "delete" && !ValidForSend(candidate.payload))
             {
-                suppressLocalWatcher = false;
+                candidate.error = "Invalid or unresolved geographic coordinates. Correct the feature before synchronization.";
+                GeoJsonPendingEdit invalid = GeoJsonOutbox.Find(local, candidate.featureId);
+                invalid.status = "conflict";
+                invalid.error = candidate.error;
+                Commit(local, jsonSpawner.LocalPersistenceVersion, false);
+                NotifyStatus(candidate.error);
+                continue;
             }
+            version = jsonSpawner.LocalPersistenceVersion;
+            GeoJsonOutbox.MarkDispatched(local, candidate);
+            if (!Commit(local, version, false)) continue;
+            Feature payload = GeoJsonOutbox.NetworkPayload(local, candidate);
+            string remoteId;
+            local.syncState.remoteIds.TryGetValue(candidate.featureId, out remoteId);
+            Response write = new Response();
+            yield return Send(candidate, payload, remoteId, write);
 
-            if (TryLoadLocalSnapshot(out Root newLocal, out string newHash))
+            // A newer local edit may have been saved during the request. Reload
+            // it and acknowledge only the immutable revision that was dispatched.
+            bool recorded = false;
+            while (!recorded && isActiveAndEnabled)
             {
-                lastLocalRoot = newLocal;
-                lastLocalJsonHash = newHash;
+                if (IsLocalBusy()) { yield return null; continue; }
+                if (!Read(out local)) break;
+                version = jsonSpawner.LocalPersistenceVersion;
+                if (write.ok) GeoJsonOutbox.Acknowledge(local, candidate, write.remoteId ?? remoteId);
+                else GeoJsonOutbox.Fail(local, candidate, write.message, maxRetries, retryBaseDelaySeconds, retryMaxDelaySeconds, DateTime.UtcNow);
+                recorded = Commit(local, version, false);
+                if (!recorded) yield return new WaitForSecondsRealtime(0.25f);
             }
-
-            RebuildIdMapFromRoot(remoteRoot);
-            lastRemoteJsonHash = remoteHash;
-
-            if (resetArUpdatedAfterRemoteRefresh)
-                yield return NotifyStatusEndpointForRemoteRefresh();
-
-            NotifyStatus("Synchronization completed");
-        }
-        finally
-        {
-            remoteRefreshInProgress = false;
-
-            if (queuedRefresh && deferredRefreshRoutine == null && isActiveAndEnabled)
-                deferredRefreshRoutine = StartCoroutine(DeferredRefreshLoop());
+            if (!recorded) continue;
+            ReportPending(local);
+            if (write.ok) yield return NotifyServerOfLocalChange();
+            else if (candidate.kind == "create") refreshRequested = true;
         }
     }
 
-    private void QueueDeferredRefresh(bool forceApply, string reason)
+    private bool Read(out Root root)
     {
-        queuedRefresh = true;
-        queuedForceRefresh |= forceApply;
-
-        if (hasUnresolvedLocalSyncFailure)
+        root = null;
+        try
         {
-            Debug.LogWarning("[GeoJsonSyncCoordinator] Remote refresh is blocked because a local REST sync operation exhausted its retries. Local data remains unchanged.");
-        }
-        else if (verboseLogs)
-        {
-            Debug.LogWarning($"[GeoJsonSyncCoordinator] Remote refresh deferred: {reason}.");
-        }
-
-        if (deferredRefreshRoutine == null && isActiveAndEnabled)
-            deferredRefreshRoutine = StartCoroutine(DeferredRefreshLoop());
-    }
-
-    private IEnumerator DeferredRefreshLoop()
-    {
-        while (queuedRefresh)
-        {
-            yield return new WaitForSeconds(Mathf.Max(0.05f, localScanIntervalSeconds));
-
-            if (remoteRefreshInProgress)
-                continue;
-
-            bool forceApply = queuedForceRefresh;
-            if (IsRefreshSafetyBlocked(forceApply, out _))
-                continue;
-
-            queuedRefresh = false;
-            queuedForceRefresh = false;
-            deferredRefreshRoutine = null;
-            StartCoroutine(RefreshRemote(forceApply));
-            yield break;
-        }
-
-        deferredRefreshRoutine = null;
-    }
-
-    private bool IsRefreshSafetyBlocked(bool forceApply, out string reason)
-    {
-        if (hasUnresolvedLocalSyncFailure)
-        {
-            reason = "a local REST sync operation exhausted its retries";
-            return true;
-        }
-
-        if (skipRefreshWhileManipulating && HasActiveManipulation())
-        {
-            reason = "marker manipulation is active";
-            return true;
-        }
-
-        if (HasPendingLocalChanges())
-        {
-            reason = "local persistence or REST synchronization is pending";
-            return true;
-        }
-
-        if (!forceApply && IsWithinLocalChangeGracePeriod(out double sinceLocalChange))
-        {
-            reason = $"the local-change grace window is active ({sinceLocalChange:F2}s)";
-            return true;
-        }
-
-        reason = string.Empty;
-        return false;
-    }
-
-    private bool IsWithinLocalChangeGracePeriod(out double sinceLocalChange)
-    {
-        sinceLocalChange = (DateTime.UtcNow - lastLocalChangeUtc).TotalSeconds;
-        return localChangeGraceSeconds > 0f &&
-               sinceLocalChange >= 0d &&
-               sinceLocalChange < localChangeGraceSeconds;
-    }
-
-    private IEnumerator RefreshLatestMqttIcon()
-    {
-        if (apiManager == null || jsonSpawner == null)
-            yield break;
-
-        bool done = false;
-        bool ok = false;
-        string msg = string.Empty;
-        MqttLatestResponse latest = null;
-
-        yield return ApiFetchLatestMqtt((success, message, response) =>
-        {
-            done = true;
-            ok = success;
-            msg = message;
-            latest = response;
-        });
-
-        if (!done || !ok || latest == null || latest.message == null)
-        {
-            if (verboseLogs)
-                Debug.LogWarning($"[GeoJsonSyncCoordinator] Latest MQTT refresh failed: {msg}");
-            yield break;
-        }
-
-        bool spawned = jsonSpawner.SpawnLatestMqttIcon(latest);
-        if (verboseLogs)
-        {
-            if (spawned)
-                Debug.Log("[GeoJsonSyncCoordinator] Latest MQTT icon refreshed.");
+            saveFileAbsolutePath = jsonSpawner.GetResolvedSaveFilePath();
+            if (!File.Exists(saveFileAbsolutePath))
+            {
+                root = new Root { features = new List<Feature>() };
+                GeoJsonOutbox.Initialize(root, false);
+            }
             else
-                Debug.LogWarning("[GeoJsonSyncCoordinator] Latest MQTT icon spawn returned false.");
+            {
+                root = JsonConvert.DeserializeObject<Root>(File.ReadAllText(saveFileAbsolutePath));
+                if (root == null) throw new InvalidDataException("Local GeoJSON is empty.");
+                GeoJsonOutbox.Initialize(root, true);
+            }
+            return true;
         }
+        catch (Exception ex) { NotifyStatus("Cannot read local edits: " + ex.Message); return false; }
     }
 
-    private bool HasPendingLocalChanges()
+    private bool Commit(Root root, int expectedVersion, bool respawn)
     {
-        return (jsonSpawner != null && jsonSpawner.HasPendingLocalPersistence) ||
-               queue.Count > 0 ||
-               queueRunning ||
-               updateDebounceTokens.Count > 0 ||
-               hasUnresolvedLocalSyncFailure;
-    }
-
-    private void RebuildIdMapFromRoot(Root root)
-    {
-        idMapLocalToRemote.Clear();
-
-        if (root?.features == null)
-            return;
-
-        foreach (Feature feature in root.features)
+        try
         {
-            string id = GetFeatureId(feature);
-            if (string.IsNullOrWhiteSpace(id))
-                continue;
-
-            idMapLocalToRemote[id] = id;
+            if (IsLocalBusy()) return false;
+            string json = JsonConvert.SerializeObject(root, Formatting.Indented);
+            if (!jsonSpawner.TryWriteExternalJsonSnapshotAtomically(json, expectedVersion)) return false;
+            if (respawn) jsonSpawner.SpawnFromJson();
+            return true;
         }
+        catch (Exception ex) { NotifyStatus("Local save failed. Pending edits retained: " + ex.Message); return false; }
     }
 
-    private string ResolveRemoteId(string localId)
+    private IEnumerator Fetch(Response result)
     {
-        if (string.IsNullOrWhiteSpace(localId))
-            return null;
-
-        return idMapLocalToRemote.TryGetValue(localId, out string remoteId) ? remoteId : null;
+        apiManager.FetchAllFeatures((ok, message, root) =>
+        { result.ok = ok; result.message = message; result.root = root; result.completed = true; });
+        yield return Wait(result, null);
     }
 
-    private void MapId(string localId, string remoteId)
+    private IEnumerator Send(GeoJsonPendingEdit edit, Feature payload, string remoteId, Response result)
     {
-        if (string.IsNullOrWhiteSpace(localId) || string.IsNullOrWhiteSpace(remoteId))
-            return;
-
-        idMapLocalToRemote[localId] = remoteId;
+        if (edit.kind == "create")
+            apiManager.CreateFeature(payload, (ok, id, raw) =>
+            {
+                result.ok = ok && !string.IsNullOrWhiteSpace(id);
+                result.remoteId = result.ok ? id : null;
+                result.message = result.ok ? "OK" : (ok ? "Server did not confirm a feature ID." : id);
+                result.completed = true;
+            }, edit.operationId);
+        else if (edit.kind == "update")
+            apiManager.UpdateFeature(remoteId, payload, (ok, message) =>
+            { result.ok = ok; result.message = message; result.completed = true; }, edit.operationId);
+        else if (edit.kind == "delete")
+            apiManager.DeleteFeature(remoteId, (ok, message) =>
+            { result.ok = ok; result.message = message; result.completed = true; }, edit.operationId);
+        else { result.completed = true; result.message = "Operation requires reconciliation."; }
+        yield return Wait(result, edit.operationId);
     }
 
-    private void UnmapId(string localId)
+    private IEnumerator Wait(Response result, string operationId)
     {
-        if (string.IsNullOrWhiteSpace(localId))
-            return;
-
-        idMapLocalToRemote.Remove(localId);
-    }
-
-    private IEnumerator RewriteLocalFeatureId(string oldId, string newId, Action<bool, string> callback)
-    {
-        if (string.IsNullOrWhiteSpace(oldId) || string.IsNullOrWhiteSpace(newId))
+        float started = Time.realtimeSinceStartup;
+        while (!result.completed && Time.realtimeSinceStartup - started < Mathf.Max(1f, apiCallbackTimeoutSeconds)) yield return null;
+        if (!result.completed)
         {
-            callback?.Invoke(false, "Local ID rewrite requires non-empty old and new IDs");
-            yield break;
+            if (operationId != null) apiManager.AbortOperation(operationId);
+            result.ok = false;
+            result.message = "Request timed out. Outcome needs verification.";
+            result.completed = true;
         }
+    }
 
+    private IEnumerator LatestMqttLoop()
+    {
         while (true)
         {
-            while (jsonSpawner != null &&
-                   (jsonSpawner.HasPendingLocalPersistence ||
-                    (skipRefreshWhileManipulating && HasActiveManipulation())))
-            {
-                yield return null;
-            }
-
-            if (jsonSpawner == null)
-            {
-                callback?.Invoke(false, "JsonSpawner became unavailable during local ID rewrite");
-                yield break;
-            }
-
-            int expectedLocalVersion = jsonSpawner.LocalPersistenceVersion;
-
-            if (!TryLoadLocalSnapshot(out Root root, out string loadedHash))
-            {
-                callback?.Invoke(false, "Cannot read the latest local GeoJSON for ID rewrite");
-                yield break;
-            }
-
-            Dictionary<string, Feature> byId = BuildFeatureMap(root);
-            if (!byId.TryGetValue(oldId, out Feature feature) || feature == null)
-            {
-                if (byId.TryGetValue(newId, out Feature committedFeature) && committedFeature != null)
-                {
-                    lastLocalRoot = root;
-                    lastLocalJsonHash = loadedHash;
-                    MapId(newId, newId);
-                    UnmapId(oldId);
-                    jsonSpawner.SpawnFromJson();
-                    callback?.Invoke(true, "Local ID rewrite was already committed");
-                    yield break;
-                }
-
-                callback?.Invoke(false, $"Local feature '{oldId}' was not found for ID rewrite");
-                yield break;
-            }
-
-            feature.id = newId;
-            if (feature.properties == null)
-                feature.properties = new Properties();
-            feature.properties.id = newId;
-
-            string json;
-            try
-            {
-                json = JsonConvert.SerializeObject(root, Formatting.Indented);
-            }
-            catch (Exception ex)
-            {
-                callback?.Invoke(false, $"Failed to serialize local ID rewrite: {ex.Message}");
-                yield break;
-            }
-
-            LocalWriteResult writeResult;
-            suppressLocalWatcher = true;
-            try
-            {
-                writeResult = WriteLocalJson(json, expectedLocalVersion);
-                if (writeResult == LocalWriteResult.Success)
-                    jsonSpawner.SpawnFromJson();
-            }
-            finally
-            {
-                suppressLocalWatcher = false;
-            }
-
-            if (writeResult == LocalWriteResult.LocalStateChanged)
-            {
-                yield return null;
-                continue;
-            }
-
-            if (writeResult == LocalWriteResult.Failed)
-            {
-                callback?.Invoke(false, "Atomic local ID rewrite failed");
-                yield break;
-            }
-
-            if (!TryLoadLocalSnapshot(out Root refreshedRoot, out string refreshedHash))
-            {
-                callback?.Invoke(false, "Local ID rewrite committed but could not be reloaded for confirmation");
-                yield break;
-            }
-
-            lastLocalRoot = refreshedRoot;
-            lastLocalJsonHash = refreshedHash;
-            MapId(newId, newId);
-            UnmapId(oldId);
-            callback?.Invoke(true, "OK");
-            yield break;
+            yield return new WaitForSecondsRealtime(Mathf.Max(1f, latestMqttPollingIntervalSeconds));
+            if (apiManager == null || jsonSpawner == null) continue;
+            Response result = new Response();
+            apiManager.FetchLatestMqttStatus((ok, message, latest) =>
+            { result.ok = ok; result.message = message; result.latest = latest; result.completed = true; });
+            yield return Wait(result, null);
+            if (result.ok && result.latest != null) jsonSpawner.SpawnLatestMqttIcon(result.latest);
         }
     }
 
-    private static bool AreFeaturesEquivalent(Feature a, Feature b)
+    private IEnumerator NotifyServerOfLocalChange()
     {
-        if (a == null || b == null)
-            return false;
-
-        string aj = JsonConvert.SerializeObject(a, Formatting.None);
-        string bj = JsonConvert.SerializeObject(b, Formatting.None);
-        return string.Equals(aj, bj, StringComparison.Ordinal);
+        Response result = new Response();
+        apiManager.PatchCurrentStatusFlag((ok, message, ignored) =>
+        { result.ok = ok; result.message = message; result.completed = true; });
+        yield return Wait(result, null);
+        if (!result.ok && verboseLogs) Debug.LogWarning("[GeoJsonSyncCoordinator] Feature delivered, observer-status notification failed: " + result.message);
     }
 
-    private static Dictionary<string, Feature> BuildFeatureMap(Root root)
+    private IEnumerator NotifyServerOfRemoteRefresh()
     {
-        Dictionary<string, Feature> map = new Dictionary<string, Feature>(StringComparer.OrdinalIgnoreCase);
-
-        if (root?.features == null)
-            return map;
-
-        foreach (Feature feature in root.features)
-        {
-            string id = GetFeatureId(feature);
-            if (string.IsNullOrWhiteSpace(id))
-                continue;
-
-            map[id] = feature;
-        }
-
-        return map;
+        Response result = new Response();
+        apiManager.PatchCurrentStatusField(remoteRefreshStatusField, remoteRefreshStatusValue, (ok, message, ignored) =>
+        { result.ok = ok; result.message = message; result.completed = true; });
+        yield return Wait(result, null);
+        if (!result.ok && verboseLogs) Debug.LogWarning("[GeoJsonSyncCoordinator] Remote state applied, status notification failed: " + result.message);
     }
 
-    private static string GetFeatureId(Feature feature)
+    private static void RemoveIdenticalDuplicates(Root root)
     {
-        if (feature == null)
-            return string.Empty;
-
-        return feature.id ?? string.Empty;
-    }
-
-    private bool TryLoadLocalSnapshot(out Root root, out string jsonHash)
-    {
-        root = null;
-        jsonHash = string.Empty;
-
-        if (!TryReadLocalJson(out string json, out string currentHash))
-            return false;
-
-        if (!TryDeserializeLocalSnapshot(json, out root))
-            return false;
-
-        jsonHash = currentHash;
-        return true;
-    }
-
-    private bool TryReadLocalJson(out string json, out string jsonHash)
-    {
-        json = string.Empty;
-        jsonHash = string.Empty;
-
-        try
-        {
-            if (string.IsNullOrWhiteSpace(saveFileAbsolutePath) || !File.Exists(saveFileAbsolutePath))
-                return false;
-
-            json = File.ReadAllText(saveFileAbsolutePath);
-            jsonHash = Hash128.Compute(json).ToString();
-            return true;
-        }
-        catch
-        {
-            json = string.Empty;
-            jsonHash = string.Empty;
-            return false;
-        }
-    }
-
-    private static bool TryDeserializeLocalSnapshot(string json, out Root root)
-    {
-        root = null;
-
-        try
-        {
-            root = JsonConvert.DeserializeObject<Root>(json);
-            if (root == null)
-                return false;
-
-            if (root.features == null)
-                root.features = new List<Feature>();
-
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private LocalWriteResult WriteLocalJson(string json, int expectedLocalVersion)
-    {
-        try
-        {
-            if (jsonSpawner == null)
-                jsonSpawner = GetComponent<JsonSpawner>();
-
-            if (jsonSpawner == null)
-                return LocalWriteResult.Failed;
-
-            return jsonSpawner.TryWriteExternalJsonSnapshotAtomically(json, expectedLocalVersion)
-                ? LocalWriteResult.Success
-                : LocalWriteResult.LocalStateChanged;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"[GeoJsonSyncCoordinator] WriteLocalJson failed: {ex.Message}");
-            return LocalWriteResult.Failed;
-        }
-    }
-
-    private IEnumerator ApiFetch(Action<bool, string, Root> callback)
-    {
-        if (apiManager == null)
-        {
-            callback?.Invoke(false, "ApiManager missing", null);
-            yield break;
-        }
-
-        bool completed = false;
-        bool ok = false;
-        string msg = "Timeout waiting FetchAllFeatures callback";
-        Root rootResult = null;
-
-        apiManager.FetchAllFeatures((success, message, root) =>
-        {
-            completed = true;
-            ok = success;
-            msg = message;
-            rootResult = root;
-        });
-
-        float timeout = Mathf.Max(0.1f, apiCallbackTimeoutSeconds);
-        float elapsed = 0f;
-        while (!completed && elapsed < timeout)
-        {
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        if (!completed)
-            callback?.Invoke(false, msg, null);
-        else
-            callback?.Invoke(ok, msg, rootResult);
-
-        yield break;
-    }
-
-    private IEnumerator ApiFetchLatestMqtt(Action<bool, string, MqttLatestResponse> callback)
-    {
-        if (apiManager == null)
-        {
-            callback?.Invoke(false, "ApiManager missing", null);
-            yield break;
-        }
-
-        bool completed = false;
-        bool ok = false;
-        string msg = "Timeout waiting latest MQTT GET callback";
-        MqttLatestResponse response = null;
-
-        apiManager.FetchLatestMqttStatus((success, message, latest) =>
-        {
-            completed = true;
-            ok = success;
-            msg = message;
-            response = latest;
-        });
-
-        float timeout = Mathf.Max(0.1f, apiCallbackTimeoutSeconds);
-        float elapsed = 0f;
-        while (!completed && elapsed < timeout)
-        {
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        if (!completed)
-            callback?.Invoke(false, msg, null);
-        else
-            callback?.Invoke(ok, msg, response);
-
-        yield break;
-    }
-
-    private IEnumerator ApiCreate(Feature feature, Action<bool, string, JObject> callback)
-    {
-        if (apiManager == null)
-        {
-            callback?.Invoke(false, "", null);
-            yield break;
-        }
-
-        bool completed = false;
-        bool ok = false;
-        string returnedId = null;
-        JObject rawResult = null;
-
-        apiManager.CreateFeature(feature, (success, id, raw) =>
-        {
-            completed = true;
-            ok = success;
-            returnedId = id;
-            rawResult = raw;
-        });
-
-        float timeout = Mathf.Max(0.1f, apiCallbackTimeoutSeconds);
-        float elapsed = 0f;
-        while (!completed && elapsed < timeout)
-        {
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        if (!completed)
-            callback?.Invoke(false, string.Empty, null);
-        else
-            callback?.Invoke(ok, returnedId, rawResult);
-
-        yield break;
-    }
-
-    private IEnumerator ApiUpdate(string featureId, Feature feature, Action<bool, string> callback)
-    {
-        if (apiManager == null)
-        {
-            callback?.Invoke(false, "ApiManager missing");
-            yield break;
-        }
-
-        bool completed = false;
-        bool ok = false;
-        string msg = "Timeout waiting UpdateFeature callback";
-
-        apiManager.UpdateFeature(featureId, feature, (success, message) =>
-        {
-            completed = true;
-            ok = success;
-            msg = message;
-        });
-
-        float timeout = Mathf.Max(0.1f, apiCallbackTimeoutSeconds);
-        float elapsed = 0f;
-        while (!completed && elapsed < timeout)
-        {
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        callback?.Invoke(completed && ok, completed ? msg : "Timeout waiting UpdateFeature callback");
-
-        yield break;
-    }
-
-    private IEnumerator ApiDelete(string featureId, Action<bool, string> callback)
-    {
-        if (apiManager == null)
-        {
-            callback?.Invoke(false, "ApiManager missing");
-            yield break;
-        }
-
-        bool completed = false;
-        bool ok = false;
-        string msg = "Timeout waiting DeleteFeature callback";
-
-        apiManager.DeleteFeature(featureId, (success, message) =>
-        {
-            completed = true;
-            ok = success;
-            msg = message;
-        });
-
-        float timeout = Mathf.Max(0.1f, apiCallbackTimeoutSeconds);
-        float elapsed = 0f;
-        while (!completed && elapsed < timeout)
-        {
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        callback?.Invoke(completed && ok, completed ? msg : "Timeout waiting DeleteFeature callback");
-
-        yield break;
-    }
-
-    private static bool IsFeatureValidForSync(Feature feature)
-    {
-        if (feature?.geometry?.coordinates == null)
-            return false;
-
-        if (!TryExtractFirstCoordinateTriplet(feature.geometry.coordinates, out double lon, out double lat, out double alt))
-            return false;
-
-        return IsValidCoordinateSet(lat, lon, alt);
-    }
-
-    private static bool TryExtractFirstCoordinateTriplet(JToken token, out double lon, out double lat, out double alt)
-    {
-        lon = 0d;
-        lat = 0d;
-        alt = 0d;
-
-        if (token == null)
-            return false;
-
-        if (token is JArray arr)
-        {
-            if (arr.Count >= 2 && TryGetDouble(arr[0], out lon) && TryGetDouble(arr[1], out lat))
-            {
-                if (arr.Count >= 3 && TryGetDouble(arr[2], out double parsedAlt))
-                    alt = parsedAlt;
-
-                return true;
-            }
-
-            foreach (JToken child in arr)
-            {
-                if (TryExtractFirstCoordinateTriplet(child, out lon, out lat, out alt))
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool TryGetDouble(JToken token, out double value)
-    {
-        value = 0d;
-        if (token == null)
-            return false;
-
-        if (token.Type == JTokenType.Float || token.Type == JTokenType.Integer)
-        {
-            value = token.Value<double>();
-            return true;
-        }
-
-        if (token.Type == JTokenType.String)
-            return double.TryParse(token.Value<string>(), out value);
-
-        return false;
-    }
-
-    private static bool IsValidCoordinateSet(double lat, double lon, double alt)
-    {
-        if (double.IsNaN(lat) || double.IsNaN(lon) || double.IsNaN(alt))
-            return false;
-
-        if (double.IsInfinity(lat) || double.IsInfinity(lon) || double.IsInfinity(alt))
-            return false;
-
-        if (Math.Abs(lat) < 1e-9 && Math.Abs(lon) < 1e-9 && Math.Abs(alt) < 1e-9)
-            return false;
-
-        return true;
-    }
-
-    private void NotifyStatus(string status)
-    {
-        OnSyncStatus?.Invoke(status);
-    }
-
-    private void MarkLocalChangeObserved()
-    {
-        lastLocalChangeUtc = DateTime.UtcNow;
-    }
-
-    private IEnumerator CheckExternalUpdates(Action<bool, bool, string> callback)
-    {
-        if (apiManager == null)
-        {
-            callback?.Invoke(false, false, "ApiManager missing");
-            yield break;
-        }
-
-        bool done = false;
-        bool ok = false;
-        bool hasExternal = false;
-        string msg = "Timeout waiting status GET";
-
-        apiManager.GetCurrentStatus((success, message, status) =>
-        {
-            done = true;
-            ok = success;
-            msg = message;
-            hasExternal = status != null && (status.fe_updated == 1 || status.mobile_updated == 1);
-        });
-
-        float timeout = Mathf.Max(0.1f, apiCallbackTimeoutSeconds);
-        float elapsed = 0f;
-        while (!done && elapsed < timeout)
-        {
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        if (!done)
-        {
-            callback?.Invoke(false, false, msg);
-            yield break;
-        }
-
-        callback?.Invoke(ok, hasExternal, msg);
-    }
-
-    private static void CanonicalizeRoot(Root root)
-    {
-        if (root == null)
-            return;
-
-        if (root.features == null)
-            root.features = new List<Feature>();
-
-        foreach (Feature feature in root.features)
-        {
-            if (feature == null)
-                continue;
-
-            if (feature.properties == null)
-                feature.properties = new Properties();
-
-            if (!string.IsNullOrWhiteSpace(feature.id) && string.IsNullOrWhiteSpace(feature.properties.id))
-                feature.properties.id = feature.id;
-        }
-
-        root.features = root.features
-            .Where(f => f != null)
-            .OrderBy(f => GetFeatureId(f), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(f => f.geometry?.type ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(f => f.properties?.className ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
-    private static int DeduplicateFeatures(Root root)
-    {
-        if (root?.features == null || root.features.Count <= 1)
-            return 0;
-
-        List<Feature> unique = new List<Feature>(root.features.Count);
+        if (root == null || root.features == null) return;
         HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (Feature feature in root.features)
-        {
-            if (feature == null)
-                continue;
-
-            string key = BuildFeatureDedupKey(feature);
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                unique.Add(feature);
-                continue;
-            }
-
-            if (seen.Add(key))
-                unique.Add(feature);
-        }
-
-        int removed = root.features.Count - unique.Count;
-        root.features = unique;
-        return removed;
+        root.features = root.features.Where(feature => feature == null || string.IsNullOrWhiteSpace(feature.id) ||
+            seen.Add(feature.id + ":" + GeoJsonOutbox.Fingerprint(feature))).ToList();
+        // Divergent records with the same ID remain and are rejected by MergeRemote.
     }
 
-    private static string BuildFeatureDedupKey(Feature feature)
+    private static bool ValidForSend(Feature feature)
     {
-        if (feature == null)
-            return string.Empty;
+        if (feature == null || feature.geometry == null || string.IsNullOrWhiteSpace(feature.id)) return false;
+        // GeoJSON permits two-dimensional positions. Missing elevation is not
+        // replaced with a fabricated altitude or treated as missing longitude/latitude.
+        if (feature.properties != null && feature.properties.elevationStatus == "unresolved" &&
+            feature.geometry.type == "Point" && feature.geometry.coordinates is JArray &&
+            ((JArray)feature.geometry.coordinates).Count > 2) return false;
+        string error;
+        if (!GeoJsonPolygonValidator.TryNormalizeFeature(feature, out error)) return false;
+        return CoordinatesAreFinite(feature.geometry);
+    }
 
-        string id = GetFeatureId(feature);
-        if (!string.IsNullOrWhiteSpace(id))
-            return "id:" + id.Trim();
+    private static bool CoordinatesAreFinite(Geometry geometry)
+    {
+        if (geometry.type == "GeometryCollection")
+            return geometry.geometries != null && geometry.geometries.Count > 0 && geometry.geometries.All(CoordinatesAreFinite);
+        return FiniteTree(geometry.coordinates);
+    }
 
-        string geometry = feature.geometry != null
-            ? JsonConvert.SerializeObject(feature.geometry, Formatting.None)
-            : string.Empty;
-
-        string cls = feature.properties?.className ?? string.Empty;
-        return $"nogid:{feature.type}|{cls}|{geometry}";
+    private static bool FiniteTree(JToken token)
+    {
+        JArray array = token as JArray;
+        if (array == null || array.Count == 0) return false;
+        if (array[0] is JArray) return array.All(FiniteTree);
+        if (array.Count < 2) return false;
+        double lon, lat;
+        if (!GeoJsonPolygonValidator.TryNumber(array[0], out lon) || !GeoJsonPolygonValidator.TryNumber(array[1], out lat) ||
+            lon < -180d || lon > 180d || lat < -90d || lat > 90d) return false;
+        for (int i = 2; i < array.Count; i++) { double value; if (!GeoJsonPolygonValidator.TryNumber(array[i], out value)) return false; }
+        return true;
     }
 
     private bool HasActiveManipulation()
     {
+        // Even forced refresh must not replace an actively dragged marker.
         FloatingIcon[] icons = FindObjectsByType<FloatingIcon>(FindObjectsSortMode.None);
-        if (icons == null || icons.Length == 0)
-            return false;
-
-        foreach (FloatingIcon icon in icons)
-        {
-            if (icon == null || !icon.isActiveAndEnabled)
-                continue;
-
-            if (icon.IsBeingManipulated)
-                return true;
-        }
-
-        return false;
+        return icons != null && icons.Any(icon => icon != null && icon.IsBeingManipulated);
     }
 
-    private IEnumerator NotifyStatusEndpointForLocalChange()
+    private void ReportPending(Root root)
     {
-        if (apiManager == null)
-            yield break;
-
-        bool done = false;
-        bool ok = false;
-        string msg = string.Empty;
-
-        apiManager.PatchCurrentStatusFlags(0, 0, 1, (success, message, _status) =>
-        {
-            done = true;
-            ok = success;
-            msg = message;
-        });
-
-        float timeout = Mathf.Max(0.1f, apiCallbackTimeoutSeconds);
-        float elapsed = 0f;
-        while (!done && elapsed < timeout)
-        {
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        if (verboseLogs)
-        {
-            if (!done)
-                Debug.LogWarning("[GeoJsonSyncCoordinator] Status PATCH timed out.");
-            else if (!ok)
-                Debug.LogWarning($"[GeoJsonSyncCoordinator] Status PATCH failed: {msg}");
-            else
-                Debug.Log("[GeoJsonSyncCoordinator] Status PATCH success: fe_updated=0, mobile_updated=0, ar_updated=1.");
-        }
+        int attention = root.syncState.pending.Count(p => p.status == "failed" || p.status == "conflict" || p.status == "reconcile");
+        NotifyStatus(root.syncState.pending.Count == 0 ? "Synchronization completed" :
+            root.syncState.pending.Count + " pending edit(s), " + attention + " need attention.");
     }
 
-    private IEnumerator NotifyStatusEndpointForRemoteRefresh()
+    private void NotifyStatus(string status)
     {
-        if (apiManager == null)
-            yield break;
-
-        if (string.IsNullOrWhiteSpace(remoteRefreshStatusField))
-            yield break;
-
-        bool done = false;
-        bool ok = false;
-        string msg = string.Empty;
-
-        apiManager.PatchCurrentStatusField(remoteRefreshStatusField, remoteRefreshStatusValue, (success, message, _status) =>
-        {
-            done = true;
-            ok = success;
-            msg = message;
-        });
-
-        float timeout = Mathf.Max(0.1f, apiCallbackTimeoutSeconds);
-        float elapsed = 0f;
-        while (!done && elapsed < timeout)
-        {
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        if (verboseLogs)
-        {
-            if (!done)
-                Debug.LogWarning("[GeoJsonSyncCoordinator] Remote-refresh status PATCH timed out.");
-            else if (!ok)
-                Debug.LogWarning($"[GeoJsonSyncCoordinator] Remote-refresh status PATCH failed: {msg}");
-            else
-                Debug.Log($"[GeoJsonSyncCoordinator] Remote-refresh status PATCH success: {remoteRefreshStatusField}={remoteRefreshStatusValue}.");
-        }
+        if (LastStatus == status) return;
+        LastStatus = status;
+        if (verboseLogs) Debug.Log("[GeoJsonSyncCoordinator] " + status);
+        OnSyncStatus?.Invoke(status);
     }
 }

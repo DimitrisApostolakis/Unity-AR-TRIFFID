@@ -19,6 +19,13 @@ public class Properties
     [JsonProperty("heights_above_surface_m", NullValueHandling = NullValueHandling.Ignore)]
     public JToken heights_above_surface_m;
 
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)] public string heightSource;
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)] public string heightStatus;
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)] public JToken heightSources;
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)] public JToken heightStatuses;
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)] public string elevationStatus;
+    [JsonProperty("ar2_client_id", NullValueHandling = NullValueHandling.Ignore)] public string clientFeatureId;
+
     [JsonProperty("marker-color", NullValueHandling = NullValueHandling.Ignore)]
     public string marker_color;
 
@@ -55,6 +62,11 @@ public class Root
     public string lastModified;
 
     public List<Feature> features;
+
+    // Local outbox and tombstones are committed in the same file as the features.
+    // Only individual Feature payloads are sent to the REST service.
+    [JsonProperty("_ar2Sync", NullValueHandling = NullValueHandling.Ignore)]
+    public GeoJsonSyncState syncState;
 }
 
 [Serializable]
@@ -127,3 +139,4 @@ public class MqttLatestResponse
     public string topic;
     public string time;
 }
+

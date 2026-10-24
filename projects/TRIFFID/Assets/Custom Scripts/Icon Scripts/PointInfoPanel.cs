@@ -111,6 +111,12 @@ public class PointInfoPanel : MonoBehaviour
 
     private event System.Action<int> markerRemovedEvent;
 
+    public void ShowAnnotationError(string message)
+    {
+        gameObject.SetActive(true);
+        if (classText != null) classText.text = "Cannot save annotation: " + message;
+    }
+
     private void Awake()
     {
         persistenceService = persistenceProvider as IAnnotationPersistenceService;
@@ -474,11 +480,13 @@ public class PointInfoPanel : MonoBehaviour
         if (idValueText       != null) idValueText.text       = p.pointID;
         if (altitudeValueText != null)
         {
-            altitudeValueText.text = p.hasHeightAboveSurface
-                ? $"{p.heightAboveSurface:F2} m"
-                : "-";
+            altitudeValueText.text = p.elevationUnresolved ? "Elevation unavailable" :
+                p.hasHeightAboveSurface
+                ? $"{p.heightAboveSurface:F2} m" + (p.heightSource == "mesh" ? (p.heightAboveSurface < 0d ? " (below surface)" : "") : " (estimated)")
+                : "Height unavailable";
         }
-        if (sourceText        != null) sourceText.text        = IsProtectedLatestMqttMarker(p) ? string.Empty : p.source;
+        if (sourceText != null) sourceText.text = (IsProtectedLatestMqttMarker(p) ? string.Empty : p.source) +
+            (string.IsNullOrEmpty(p.syncStatus) ? string.Empty : "\n" + p.syncStatus);
         if (latValueText      != null) latValueText.text      = $"{Mathf.Abs((float)p.latitude):F4}° {(p.latitude  >= 0 ? "N" : "S")}";
         if (longValueText     != null) longValueText.text     = $"{Mathf.Abs((float)p.longitude):F4}° {(p.longitude >= 0 ? "E" : "W")}";
 
@@ -881,3 +889,4 @@ public class PointInfoPanel : MonoBehaviour
         LiveUpdateIfCurrent(observedMarker);
     }
 }
+

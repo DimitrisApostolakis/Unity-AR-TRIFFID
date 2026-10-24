@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Collections;
 using System.Globalization;
@@ -67,6 +68,14 @@ public class GeoJsonApiManager : MonoBehaviour
     private bool latestMqttEndpointValidationCompleted;
     private bool statusEndpointValidationCompleted;
 
+    private readonly Dictionary<string, UnityWebRequest> activeOperations = new Dictionary<string, UnityWebRequest>();
+
+    public void AbortOperation(string operationId)
+    {
+        UnityWebRequest request;
+        if (operationId != null && activeOperations.TryGetValue(operationId, out request)) request.Abort();
+    }
+
     private void Awake()
     {
         LoadApiEndpointsConfig();
@@ -84,19 +93,19 @@ public class GeoJsonApiManager : MonoBehaviour
         StartCoroutine(FetchLatestMqttStatusCoroutine(callback));
     }
 
-    public void CreateFeature(Feature feature, Action<bool, string, JObject> callback)
+    public void CreateFeature(Feature feature, Action<bool, string, JObject> callback, string operationId = null)
     {
-        StartCoroutine(CreateFeatureCoroutine(feature, callback));
+        StartCoroutine(CreateFeatureCoroutine(feature, callback, operationId));
     }
 
-    public void UpdateFeature(string featureId, Feature feature, Action<bool, string> callback)
+    public void UpdateFeature(string featureId, Feature feature, Action<bool, string> callback, string operationId = null)
     {
-        StartCoroutine(UpdateFeatureCoroutine(featureId, feature, callback));
+        StartCoroutine(UpdateFeatureCoroutine(featureId, feature, callback, operationId));
     }
 
-    public void DeleteFeature(string featureId, Action<bool, string> callback)
+    public void DeleteFeature(string featureId, Action<bool, string> callback, string operationId = null)
     {
-        StartCoroutine(DeleteFeatureCoroutine(featureId, callback));
+        StartCoroutine(DeleteFeatureCoroutine(featureId, callback, operationId));
     }
 
     public void GetCurrentStatus(Action<bool, string, ObserverSyncStatus> callback)
@@ -385,7 +394,7 @@ public class GeoJsonApiManager : MonoBehaviour
         }
     }
 
-    private IEnumerator CreateFeatureCoroutine(Feature feature, Action<bool, string, JObject> callback)
+    private IEnumerator CreateFeatureCoroutine(Feature feature, Action<bool, string, JObject> callback, string operationId)
     {
         if (feature == null)
         {
@@ -402,11 +411,17 @@ public class GeoJsonApiManager : MonoBehaviour
         string payload = JsonConvert.SerializeObject(feature, Formatting.None);
         using (UnityWebRequest request = BuildRequest(collectionUrl, "PUT", payload))
         {
-            yield return request.SendWebRequest();
+            if (!string.IsNullOrEmpty(operationId))
+            {
+                request.SetRequestHeader("Idempotency-Key", operationId);
+                activeOperations[operationId] = request;
+            }
+            try { yield return request.SendWebRequest(); }
+            finally { if (!string.IsNullOrEmpty(operationId)) activeOperations.Remove(operationId); }
 
             if (!IsSuccess(request))
             {
-                callback?.Invoke(false, string.Empty, null);
+                callback?.Invoke(false, BuildError("PUT", collectionUrl, request), null);
                 if (verboseLogs)
                     Debug.LogWarning(BuildError("PUT", collectionUrl, request));
                 yield break;
@@ -418,7 +433,7 @@ public class GeoJsonApiManager : MonoBehaviour
         }
     }
 
-    private IEnumerator UpdateFeatureCoroutine(string featureId, Feature feature, Action<bool, string> callback)
+    private IEnumerator UpdateFeatureCoroutine(string featureId, Feature feature, Action<bool, string> callback, string operationId)
     {
         string id = string.IsNullOrWhiteSpace(featureId) ? feature?.id : featureId;
         id = id?.Trim();
@@ -448,7 +463,13 @@ public class GeoJsonApiManager : MonoBehaviour
         string payload = patch.ToString(Formatting.None);
         using (UnityWebRequest request = BuildRequest(url, "PATCH", payload))
         {
-            yield return request.SendWebRequest();
+            if (!string.IsNullOrEmpty(operationId))
+            {
+                request.SetRequestHeader("Idempotency-Key", operationId);
+                activeOperations[operationId] = request;
+            }
+            try { yield return request.SendWebRequest(); }
+            finally { if (!string.IsNullOrEmpty(operationId)) activeOperations.Remove(operationId); }
 
             if (!IsSuccess(request))
             {
@@ -460,7 +481,7 @@ public class GeoJsonApiManager : MonoBehaviour
         }
     }
 
-    private IEnumerator DeleteFeatureCoroutine(string featureId, Action<bool, string> callback)
+    private IEnumerator DeleteFeatureCoroutine(string featureId, Action<bool, string> callback, string operationId)
     {
         string id = featureId?.Trim();
         if (string.IsNullOrWhiteSpace(id))
@@ -480,9 +501,15 @@ public class GeoJsonApiManager : MonoBehaviour
         {
             request.timeout = Mathf.Max(1, requestTimeoutSeconds);
             request.SetRequestHeader("Accept", "application/json");
-            yield return request.SendWebRequest();
+            if (!string.IsNullOrEmpty(operationId))
+            {
+                request.SetRequestHeader("Idempotency-Key", operationId);
+                activeOperations[operationId] = request;
+            }
+            try { yield return request.SendWebRequest(); }
+            finally { if (!string.IsNullOrEmpty(operationId)) activeOperations.Remove(operationId); }
 
-            if (!IsSuccess(request))
+            if (!IsSuccess(request) && request.responseCode != 404)
             {
                 callback?.Invoke(false, BuildError("DELETE", url, request));
                 yield break;
@@ -694,8 +721,7 @@ public class GeoJsonApiManager : MonoBehaviour
         if (!string.IsNullOrWhiteSpace(nestedId))
             return nestedId;
 
-        if (!string.IsNullOrWhiteSpace(fallback?.id))
-            return fallback.id;
+        // A server-assigned ID must be confirmed by its response or a later GET.
 
         return string.Empty;
     }
@@ -720,121 +746,6 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private static Root ParseRootWithNormalization(string json, out int droppedMissingClass)
     {
-        droppedMissingClass = 0;
-
-        if (string.IsNullOrWhiteSpace(json))
-            return null;
-
-        JToken token = JToken.Parse(json);
-        if (!(token is JObject rootObj))
-            return null;
-
-        if (!(rootObj["features"] is JArray features))
-        {
-            features = new JArray();
-            rootObj["features"] = features;
-        }
-
-        JArray normalizedFeatures = new JArray();
-        foreach (JToken featureToken in features)
-        {
-            if (!(featureToken is JObject featureObj))
-                continue;
-
-            JObject propertiesObj = featureObj["properties"] as JObject;
-            if (propertiesObj == null)
-            {
-                propertiesObj = new JObject();
-                featureObj["properties"] = propertiesObj;
-            }
-
-            string className = propertiesObj["class"]?.Type == JTokenType.Null
-                ? string.Empty
-                : (propertiesObj["class"]?.ToString() ?? string.Empty).Trim();
-
-            if (string.IsNullOrWhiteSpace(className))
-            {
-                droppedMissingClass++;
-                continue;
-            }
-
-            propertiesObj["class"] = className;
-
-            NormalizeStringField(propertiesObj, "id");
-            NormalizeStringField(propertiesObj, "category");
-            NormalizeStringField(propertiesObj, "source");
-            NormalizeStringField(propertiesObj, "marker-color");
-
-            NormalizeNumberField(propertiesObj, "confidence", 0d);
-            NormalizeNumberField(propertiesObj, "altitude_m", 0d);
-            NormalizeOptionalNumberField(propertiesObj, "height_above_surface_m");
-
-            JToken featureId = featureObj["id"];
-            if (featureId == null || featureId.Type == JTokenType.Null || string.IsNullOrWhiteSpace(featureId.ToString()))
-                continue;
-
-            featureObj["id"] = featureId.ToString().Trim();
-
-            normalizedFeatures.Add(featureObj);
-        }
-
-        rootObj["features"] = normalizedFeatures;
-        return rootObj.ToObject<Root>();
-    }
-
-    private static void NormalizeStringField(JObject obj, string fieldName)
-    {
-        if (obj == null || string.IsNullOrWhiteSpace(fieldName))
-            return;
-
-        JToken token = obj[fieldName];
-        if (token == null || token.Type == JTokenType.Null)
-        {
-            obj[fieldName] = string.Empty;
-            return;
-        }
-
-        obj[fieldName] = token.ToString().Trim();
-    }
-
-    private static void NormalizeNumberField(JObject obj, string fieldName, double fallback)
-    {
-        if (obj == null || string.IsNullOrWhiteSpace(fieldName))
-            return;
-
-        JToken token = obj[fieldName];
-        if (token == null || token.Type == JTokenType.Null)
-        {
-            obj[fieldName] = fallback;
-            return;
-        }
-
-        if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
-            return;
-
-        string raw = token.ToString().Trim();
-        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
-            obj[fieldName] = parsed;
-        else
-            obj[fieldName] = fallback;
-    }
-
-    private static void NormalizeOptionalNumberField(JObject obj, string fieldName)
-    {
-        if (obj == null || string.IsNullOrWhiteSpace(fieldName))
-            return;
-
-        JToken token = obj[fieldName];
-        if (token == null || token.Type == JTokenType.Null)
-            return;
-
-        if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
-            return;
-
-        string raw = token.ToString().Trim();
-        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
-            obj[fieldName] = parsed;
-        else
-            obj.Remove(fieldName);
+        return GeoJsonPayloadParser.Parse(json, out droppedMissingClass);
     }
 }

@@ -75,14 +75,14 @@ public class JsonSpawner : MonoBehaviour
     [Tooltip("Physics layers considered by surface-height and surface-snap raycasts.")]
     [SerializeField] private LayerMask surfaceSnapMask = ~0;
     [Min(0f)]
-    [Tooltip("Vertical distance above the estimated annotation position where a surface-snap ray begins.")]
+    [Tooltip("Physical distance in metres above the estimated annotation position where a surface ray begins.")]
     [SerializeField] private float surfaceSnapRayStartOffset = 25f;
     [Min(0f)]
-    [Tooltip("Maximum distance used by each surface-snap raycast.")]
+    [Tooltip("Physical distance in metres used by each surface raycast.")]
     [SerializeField] private float surfaceSnapRayDistance = 100f;
-    [Tooltip("Offset applied along the hit normal after a successful surface snap.")]
+    [Tooltip("Offset in physical metres along ENU Up after a successful surface snap.")]
     [SerializeField] private float surfaceSnapOffset = 0.01f;
-    [Tooltip("Additional upward fallback offset used by the surface-snap placement flow.")]
+    [Tooltip("Additional offset in physical metres along ENU Up after surface snapping.")]
     [SerializeField] private float surfaceSnapLift = 0.03f;
     [Tooltip("Optional map surface object that may be activated temporarily for surface snapping.")]
     [SerializeField] private GameObject surfaceSnapTargetObject;
@@ -103,7 +103,8 @@ public class JsonSpawner : MonoBehaviour
     private bool saveInProgress;
     private bool saveQueued;
     private float autoSaveTimer;
-    private readonly object fileWriteLock = new object();
+    private readonly GeoJsonSaveSequence diskSaves = new GeoJsonSaveSequence();
+    private object fileWriteLock => diskSaves.SyncRoot;
     private readonly object dataMutationLock = new object();
     private readonly HashSet<string> reservedFeatureIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     
@@ -135,6 +136,31 @@ public class JsonSpawner : MonoBehaviour
     }
 
     private List<NodeMapping> nodeMappings = new List<NodeMapping>();
+
+    public string LastValidationError { get; private set; }
+
+    private void ReportValidationError(string error)
+    {
+        LastValidationError = error;
+        Debug.LogWarning("[JsonSpawner] " + error);
+        if (infoPanel != null) infoPanel.ShowAnnotationError(error);
+    }
+
+    private void UpdateSyncStatusLabels()
+    {
+        if (currentRootData == null || currentRootData.syncState == null) return;
+        foreach (NodeMapping mapping in nodeMappings)
+        {
+            if (mapping.node == null) continue;
+            PointData data = mapping.node.GetComponent<PointData>();
+            if (data == null) continue;
+            GeoJsonPendingEdit edit = GeoJsonOutbox.Find(currentRootData, data.pointID);
+            data.syncStatus = edit == null ? string.Empty :
+                edit.status == "conflict" ? "Conflict" : edit.status == "reconcile" ? "Needs confirmation" :
+                edit.status == "failed" ? "Needs retry" : "Pending";
+            data.NotifyDataChanged();
+        }
+    }
 
     private void Awake()
     {
@@ -289,6 +315,7 @@ public class JsonSpawner : MonoBehaviour
             transformData = loadedTransform;
             transformLoadWarningShown = false;
             currentRootData = loadedRoot;
+            GeoJsonOutbox.Initialize(currentRootData, true);
 
             try
             {
@@ -328,6 +355,7 @@ public class JsonSpawner : MonoBehaviour
 
             // SetAllColliders(true);
             ApplyColliderStateToSpawnedObjects(collidersDesiredActive, false);
+            UpdateSyncStatusLabels();
 
             if (infoPanel != null && infoPanel.gameObject.activeSelf)
                 infoPanel.ShowFirst();
@@ -494,7 +522,7 @@ public class JsonSpawner : MonoBehaviour
         }
 
         PointData spawnedData = spawned.GetComponent<PointData>();
-        if (spawnedData != null)
+        if (spawnedData != null && !spawnedData.elevationUnresolved)
         {
             latestMqttCachedAltitude = spawnedData.altitude;
             latestMqttAltitudeCached = true;
@@ -563,6 +591,7 @@ public class JsonSpawner : MonoBehaviour
 
             if (!mapping.isCentroid && mapping.coordArray != null)
             {
+                if (data.elevationUnresolved) continue;
                 if (mapping.coordArray.Count >= 2)
                 {
                     mapping.coordArray[0] = data.longitude;
@@ -584,6 +613,7 @@ public class JsonSpawner : MonoBehaviour
                     mapping.parentFeature.properties.height_above_surface_m = data.hasHeightAboveSurface
                         ? (float?)data.heightAboveSurface
                         : null;
+                    StorePointHeightMetadata(mapping.parentFeature, data);
                 }
                 else if (storesVertexHeights)
                 {
@@ -631,8 +661,18 @@ public class JsonSpawner : MonoBehaviour
             return;
         }
 
-        SyncWorldToJSON();
-        NormalizeForJsonWrite();
+        try
+        {
+            SyncWorldToJSON();
+            NormalizeForJsonWrite();
+            GeoJsonOutbox.CaptureChanges(currentRootData, DateTime.UtcNow, 0.5d);
+            UpdateSyncStatusLabels();
+        }
+        catch (InvalidDataException ex)
+        {
+            ReportValidationError(ex.Message);
+            return;
+        }
         currentRootData.lastModified = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ");
 
         string json;
@@ -667,9 +707,12 @@ public class JsonSpawner : MonoBehaviour
             if (HasPendingLocalPersistence || dataVersion != expectedLocalVersion)
                 return false;
 
-            AtomicWriteAllText(targetPath, json);
+            Root committed = JsonConvert.DeserializeObject<Root>(json);
+            if (committed == null) throw new InvalidDataException("Invalid external snapshot.");
+            if (!diskSaves.Write(targetPath, json, dataVersion)) return false;
+            if (currentRootData != null) currentRootData.syncState = committed.syncState;
         }
-
+        UpdateSyncStatusLabels();
         return true;
     }
 
@@ -700,6 +743,7 @@ public class JsonSpawner : MonoBehaviour
     private async Task WriteJsonAsync(string json, int saveVersion)
     {
         saveInProgress = true;
+        bool writeSucceeded = false;
 
         string localSavePath = saveFilePath;
 
@@ -709,10 +753,11 @@ public class JsonSpawner : MonoBehaviour
             {
                 lock (fileWriteLock)
                 {
-                    AtomicWriteAllText(localSavePath, json);
+                    diskSaves.Write(localSavePath, json, saveVersion);
                 }
             });
 
+            writeSucceeded = true;
             lastSavedVersion = Math.Max(lastSavedVersion, saveVersion);
             autoSaveTimer = 0f;
             Debug.Log($"[JsonSpawner] Saved to: {saveFilePath} (lastModified: {currentRootData.lastModified})");
@@ -728,7 +773,7 @@ public class JsonSpawner : MonoBehaviour
         finally
         {
             saveInProgress = false;
-            if (saveQueued || dataVersion > lastSavedVersion)
+            if (writeSucceeded && (saveQueued || dataVersion > lastSavedVersion))
             {
                 saveQueued = false;
                 SaveCurrentStateToPersistentStorage();
@@ -744,11 +789,22 @@ public class JsonSpawner : MonoBehaviour
         if (dataVersion <= lastSavedVersion && !saveInProgress && !saveQueued)
             return;
 
-        if (!HasValidDataForSave())
+        if (currentRootData.features == null ||
+            (currentRootData.features.Count > 0 && !HasValidDataForSave()))
             return;
 
-        SyncWorldToJSON();
-        NormalizeForJsonWrite();
+        try
+        {
+            SyncWorldToJSON();
+            NormalizeForJsonWrite();
+            GeoJsonOutbox.CaptureChanges(currentRootData, DateTime.UtcNow, 0.5d);
+            UpdateSyncStatusLabels();
+        }
+        catch (InvalidDataException ex)
+        {
+            ReportValidationError(ex.Message);
+            return;
+        }
         currentRootData.lastModified = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ");
 
         string json;
@@ -766,7 +822,7 @@ public class JsonSpawner : MonoBehaviour
         {
             lock (fileWriteLock)
             {
-                AtomicWriteAllText(saveFilePath, json);
+                diskSaves.Write(saveFilePath, json, dataVersion);
             }
 
             lastSavedVersion = dataVersion;
@@ -781,63 +837,11 @@ public class JsonSpawner : MonoBehaviour
 
     private static void AtomicWriteAllText(string targetPath, string content)
     {
-        if (string.IsNullOrWhiteSpace(targetPath))
-            throw new ArgumentException("targetPath is null or empty", nameof(targetPath));
-
-        string targetDirectory = Path.GetDirectoryName(targetPath);
-        if (!string.IsNullOrEmpty(targetDirectory) && !Directory.Exists(targetDirectory))
-            Directory.CreateDirectory(targetDirectory);
-
-        string tempPath = targetPath + ".tmp";
-
-        try
-        {
-            using (FileStream stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            using (StreamWriter writer = new StreamWriter(stream))
-            {
-                writer.Write(content);
-                writer.Flush();
-                stream.Flush(true);
-            }
-
-            if (File.Exists(targetPath))
-            {
-                EnsureFileWritable(targetPath);
-
-                try
-                {
-                    File.Replace(tempPath, targetPath, null);
-                }
-                catch (IOException)
-                {
-                    WriteDirectOverwrite(targetPath, content);
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    EnsureFileWritable(targetPath);
-                    WriteDirectOverwrite(targetPath, content);
-                }
-            }
-            else
-                File.Move(tempPath, targetPath);
-        }
-        finally
-        {
-            if (File.Exists(tempPath))
-                File.Delete(tempPath);
-        }
+        EnsureFileWritable(targetPath);
+        GeoJsonAtomicFile.Write(targetPath, content);
     }
 
-    private static void WriteDirectOverwrite(string targetPath, string content)
-    {
-        using (FileStream stream = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.Read))
-        using (StreamWriter writer = new StreamWriter(stream))
-        {
-            writer.Write(content);
-            writer.Flush();
-            stream.Flush(true);
-        }
-    }
+    // Atomic replacement failures are reported. The saved copy is never truncated.
 
     private static void EnsureFileWritable(string path)
     {
@@ -1014,6 +1018,7 @@ public class JsonSpawner : MonoBehaviour
 
     private void UpdateCoordinatesChangesJson(PointData pd)
     {
+        if (pd == null || pd.elevationUnresolved) return;
         string changesPath = ResolveCoordinatesChangesPath();
         if (!File.Exists(changesPath)) return;
         
@@ -1041,12 +1046,13 @@ public class JsonSpawner : MonoBehaviour
                         f["id"] = NormalizeLower(f["id"]?.ToString());
                         f["geometry"]["coordinates"] = new JArray { pd.longitude, pd.latitude, pd.altitude };
                         f["properties"]["altitude_m"] = (float)pd.altitude;
-                        if (pd.hasHeightAboveSurface)
-                            f["properties"]["height_above_surface_m"] = (float)pd.heightAboveSurface;
+                        f["properties"]["height_above_surface_m"] = pd.hasHeightAboveSurface ? new JValue(pd.heightAboveSurface) : JValue.CreateNull();
+                        f["properties"]["heightSource"] = pd.heightSource;
+                        f["properties"]["heightStatus"] = pd.heightStatus;
                         break;
                     }
                 }
-                File.WriteAllText(changesPath, root.ToString(Newtonsoft.Json.Formatting.Indented));
+                GeoJsonAtomicFile.Write(changesPath, root.ToString(Newtonsoft.Json.Formatting.Indented));
                 Debug.Log($"[JsonSpawner] Live Move Saved for New Object ID: {pd.pointID}");
             }
         }
@@ -1090,6 +1096,20 @@ public class JsonSpawner : MonoBehaviour
             if (mapping == null || mapping.node == null || mapping.parentFeature == null)
                 continue;
 
+            PointData mappedData = mapping.node.GetComponent<PointData>();
+            if (mappedData != null && mappedData.elevationUnresolved)
+            {
+                // The displayed altitude is only a preview. Preserve the original
+                // geographic position and do not export an invented altitude.
+                if (mapping.parentFeature.properties != null)
+                {
+                    mapping.parentFeature.properties.elevationStatus = "unresolved";
+                    if (IsPointFeature(mapping.parentFeature)) mapping.parentFeature.properties.altitude_m = null;
+                }
+                if (!mapping.isCentroid && mapping.coordArray != null && IsCoordinateTuple(mapping.coordArray))
+                    while (mapping.coordArray.Count > 2) mapping.coordArray.RemoveAt(mapping.coordArray.Count - 1);
+                continue;
+            }
             Vector3 localToMap = GetStableMapLocalPosition(mapping.node, parentRef);
             Vector3Double wgs84 = ColmapToWgs84(localToMap);
 
@@ -1111,8 +1131,7 @@ public class JsonSpawner : MonoBehaviour
                 if (IsPointFeature(mapping.parentFeature))
                 {
                     PointData pointData = mapping.node.GetComponent<PointData>();
-                    if (pointData != null && pointData.hasHeightAboveSurface)
-                        mapping.parentFeature.properties.height_above_surface_m = (float)pointData.heightAboveSurface;
+                    if (pointData != null) StorePointHeightMetadata(mapping.parentFeature, pointData);
                 }
                 else if (SupportsPerVertexHeight(mapping.parentFeature))
                 {
@@ -1178,40 +1197,14 @@ public class JsonSpawner : MonoBehaviour
 
     private void EnforceClosedPolygonRings()
     {
-        if (currentRootData?.features == null)
-            return;
-
+        if (currentRootData == null || currentRootData.features == null) return;
         foreach (Feature feature in currentRootData.features)
         {
-            if (feature?.geometry?.coordinates == null)
-                continue;
-
-            string geometryType = feature.geometry.type;
-            if (string.Equals(geometryType, "Polygon", StringComparison.OrdinalIgnoreCase))
-            {
-                JArray polygon = feature.geometry.coordinates as JArray;
-                if (polygon == null)
-                    continue;
-
-                foreach (JArray ring in polygon)
-                    EnsureRingClosed(ring);
-            }
-            else if (string.Equals(geometryType, "MultiPolygon", StringComparison.OrdinalIgnoreCase))
-            {
-                JArray multiPolygon = feature.geometry.coordinates as JArray;
-                if (multiPolygon == null)
-                    continue;
-
-                foreach (JArray polygon in multiPolygon)
-                {
-                    if (polygon == null)
-                        continue;
-
-                    foreach (JArray ring in polygon)
-                        EnsureRingClosed(ring);
-                }
-            }
+            string error;
+            if (!GeoJsonPolygonValidator.TryNormalizeFeature(feature, out error))
+                throw new InvalidDataException("Feature " + feature.id + ": " + error);
         }
+        LastValidationError = null;
     }
 
     private static void EnsureRingClosed(JArray ring)
@@ -1333,7 +1326,8 @@ public class JsonSpawner : MonoBehaviour
         double altitude = useCachedAltitude ? latestMqttCachedAltitude : fallbackAltitude;
         Vector3 targetPosition = GetColmapPosition(response.message.longitude.Value, response.message.latitude.Value, altitude);
 
-        if (!useCachedAltitude && enableSurfaceSnapFallback)
+        bool elevationResolved = false;
+        if (enableSurfaceSnapFallback)
         {
             Vector3 worldPosition = parentRef.TransformPoint(targetPosition);
             if (TrySnapToSurface(worldPosition, parentRef, out Vector3 snappedWorldPos))
@@ -1342,7 +1336,8 @@ public class JsonSpawner : MonoBehaviour
                 Vector3 snappedLocalPos = parentRef.InverseTransformPoint(snappedWorldPos);
                 JsonSpawner.Vector3Double snappedWgs = ColmapToWgs84(snappedLocalPos);
                 altitude = snappedWgs.alt;
-                targetPosition = parentRef.InverseTransformPoint(snappedWorldPos);
+                targetPosition = GetColmapPosition(response.message.longitude.Value, response.message.latitude.Value, altitude);
+                elevationResolved = true;
                 latestMqttCachedAltitude = altitude;
                 latestMqttAltitudeCached = true;
             }
@@ -1360,6 +1355,7 @@ public class JsonSpawner : MonoBehaviour
         markerData.latitude = response.message.latitude.Value;
         markerData.longitude = response.message.longitude.Value;
         markerData.altitude = altitude;
+        markerData.SetElevationUnresolved(!elevationResolved);
         markerData.confidence = 1f;
         markerData.pointClass = LatestMqttClassName;
         markerData.category = "telemetry";
@@ -1583,13 +1579,16 @@ public class JsonSpawner : MonoBehaviour
         bool isPolygonNode = isVertex && (string.Equals(geometryType, "Polygon", StringComparison.OrdinalIgnoreCase) || string.Equals(geometryType, "MultiPolygon", StringComparison.OrdinalIgnoreCase));
 
         bool hasAltitudeFromToken = TryGetAltitudeFromCoordinateToken(token, out double coordAlt);
-        bool hasAltitudeFromProperties = feature.properties?.altitude_m.HasValue ?? false;
+        // altitude_m is a point altitude. On lines/polygons it may summarize a
+        // different vertex and cannot resolve this vertex's missing elevation.
+        bool hasAltitudeFromProperties = IsPointFeature(feature) && (feature.properties?.altitude_m.HasValue ?? false);
 
-        double alt = hasAltitudeFromProperties ? feature.properties.altitude_m.Value : fallbackAltitude ?? 0.0;
+        double alt = hasAltitudeFromProperties ? feature.properties.altitude_m.Value : fallbackAltitude ?? GetTransformOriginAltitude();
         if (hasAltitudeFromToken)
             alt = coordAlt;
 
-        bool shouldFallbackToSurface = enableSurfaceSnapFallback && !hasAltitudeFromToken && !hasAltitudeFromProperties;
+        bool missingAltitude = !hasAltitudeFromToken && !hasAltitudeFromProperties;
+        bool shouldFallbackToSurface = enableSurfaceSnapFallback && missingAltitude;
 
         Vector3 pos   = GetColmapPosition(lon, lat, alt);
 
@@ -1613,21 +1612,25 @@ public class JsonSpawner : MonoBehaviour
             EnsurePositiveScaleForBoxCollider(obj);
             obj.transform.position = parentRef.TransformPoint(pos);
 
+            bool elevationResolved = !missingAltitude;
             if (shouldFallbackToSurface && TrySnapToSurface(obj.transform.position, parentRef, out Vector3 snappedWorldPos))
             {
+                elevationResolved = true;
                 obj.transform.position = snappedWorldPos;
 
                 Vector3 snappedLocalPos = parentRef.InverseTransformPoint(snappedWorldPos);
                 Vector3Double snappedWgs = ColmapToWgs84(snappedLocalPos);
                 alt = snappedWgs.alt;
-
+                // Reproject using the supplied longitude/latitude. A surface
+                // estimate may supply altitude, never replacement horizontal coordinates.
+                obj.transform.localPosition = GetColmapPosition(lon, lat, alt);
                 TryWriteAltitudeToCoordinateToken(token, alt);
-                if (feature.properties != null)
+                if (feature.properties != null && IsPointFeature(feature))
                     feature.properties.altitude_m = (float)alt;
             }
             else if (shouldFallbackToSurface)
             {
-                Debug.LogWarning($"[JsonSpawner] Surface snap failed for {className}_{id} (missing/null altitude). Keeping fallback altitude={alt:F3}.");
+                Debug.LogWarning($"[JsonSpawner] Surface snap failed for {className}_{id} (missing/null altitude). Elevation unavailable. Displaying a flagged preview at altitude={alt:F3}.");
             }
             
             if (isCentroid)    obj.name = $"Centroid_{className}_{id}";
@@ -1642,6 +1645,8 @@ public class JsonSpawner : MonoBehaviour
             data.latitude   = lat;
             data.longitude  = lon;
             data.altitude   = alt;
+            if (prefabToUse == nodePrefab) ApplyColor(obj, fallbackColor);
+            data.SetElevationUnresolved(!elevationResolved);
 
             bool heightMetadataChanged = false;
             if (isCentroid)
@@ -1663,6 +1668,8 @@ public class JsonSpawner : MonoBehaviour
                 {
                     data.heightAboveSurface = storedHeight;
                     data.hasHeightAboveSurface = true;
+                    data.heightSource = "retained";
+                    data.heightStatus = "query_failed";
                 }
 
                 heightMetadataChanged = data.hasHeightAboveSurface &&
@@ -1690,7 +1697,7 @@ public class JsonSpawner : MonoBehaviour
             data.pointID    = id; 
             data.source     = feature.properties?.source ?? "-";
 
-            if (prefabToUse == nodePrefab) ApplyColor(obj, fallbackColor);
+            if (prefabToUse == nodePrefab && !data.elevationUnresolved) ApplyColor(obj, fallbackColor);
 
             spawnedObjects.Add(obj);
             nodeMappings.Add(new NodeMapping { 
@@ -1739,114 +1746,83 @@ public class JsonSpawner : MonoBehaviour
 
     private Vector3 GetWorldAltitudeAxis(Transform parentRef)
     {
-        if (parentRef != null && transformData?.colmap_to_enu?.R_rowmajor != null)
-        {
-            float[] rotation = transformData.colmap_to_enu.R_rowmajor;
-            if (rotation.Length >= 9)
-            {
-                // R maps COLMAP coordinates to ENU. The third row therefore gives
-                // the ENU-up direction expressed in COLMAP coordinates.
-                Vector3 colmapUp = new Vector3(rotation[6], rotation[7], rotation[8]);
-                if (IsFiniteNumber(colmapUp.x) && IsFiniteNumber(colmapUp.y) &&
-                    IsFiniteNumber(colmapUp.z) && colmapUp.sqrMagnitude > 1e-8f)
-                {
-                    Vector3 worldUp = parentRef.TransformDirection(colmapUp.normalized);
-                    if (worldUp.sqrMagnitude > 1e-8f)
-                        return worldUp.normalized;
-                }
-            }
-        }
+        Vector3 up;
+        float units;
+        return transformData != null && transformData.colmap_to_enu != null &&
+            GeographicSurfaceQuery.TryGetWorldVertical(parentRef, transformData.colmap_to_enu.R_rowmajor,
+                transformData.colmap_to_enu.scale, out up, out units) ? up : Vector3.zero;
+    }
 
-        return parentRef != null && parentRef.up.sqrMagnitude > 1e-6f
-            ? parentRef.up.normalized
-            : Vector3.up;
+    private bool TryGetSurfaceQueryScale(Transform parentRef, out Vector3 up, out float units)
+    {
+        up = Vector3.zero;
+        units = 0f;
+        return transformData != null && transformData.colmap_to_enu != null &&
+            GeographicSurfaceQuery.TryGetWorldVertical(parentRef, transformData.colmap_to_enu.R_rowmajor,
+                transformData.colmap_to_enu.scale, out up, out units);
     }
 
     private bool TrySnapToSurface(Vector3 approximateWorldPos, Transform parentRef, out Vector3 snappedWorldPos)
     {
         snappedWorldPos = approximateWorldPos;
-
-        if (parentRef == null)
-            return false;
-
-        bool activatedSurfaceForSnap = false;
-        PrepareSurfaceForSnap(ref activatedSurfaceForSnap);
-
+        Vector3 axis;
+        float units;
+        if (!TryGetSurfaceQueryScale(parentRef, out axis, out units)) return false;
+        bool activated = false;
+        PrepareSurfaceForSnap(ref activated);
         try
         {
-            Vector3 castAxis = GetWorldAltitudeAxis(parentRef);
-            float rayStartOffset = Mathf.Max(0.25f, surfaceSnapRayStartOffset);
-            float rayDistance = Mathf.Max(0.5f, surfaceSnapRayDistance);
-            float snapLift = Mathf.Max(0f, surfaceSnapOffset + surfaceSnapLift);
-
-            if (TryRaycastSurfaceFromPivot(approximateWorldPos, castAxis, rayStartOffset, rayDistance, snapLift, out snappedWorldPos))
-                return true;
-
-            float extendedStartOffset = Mathf.Max(rayStartOffset * 8f, 250f);
-            float extendedDistance = Mathf.Max(rayDistance * 16f, 2000f);
-            if (TryRaycastSurfaceFromPivot(approximateWorldPos, castAxis, extendedStartOffset, extendedDistance, snapLift, out snappedWorldPos))
-                return true;
-
-            if (surfaceSnapTargetObject != null)
-            {
-                Collider targetCollider = surfaceSnapTargetObject.GetComponentInChildren<Collider>(true);
-                if (targetCollider != null)
-                {
-                    Vector3 boundsCenter = targetCollider.bounds.center;
-                    float boundsExtent = Mathf.Max(1f, targetCollider.bounds.extents.magnitude);
-
-                    if (TryRaycastSurfaceFromPivot(boundsCenter, castAxis, boundsExtent + 5f, boundsExtent * 2f + 20f, snapLift, out snappedWorldPos))
-                        return true;
-                }
-            }
-
-            return false;
+            float startMetres = Mathf.Max(0.25f, surfaceSnapRayStartOffset);
+            float distanceMetres = Mathf.Max(0.5f, surfaceSnapRayDistance);
+            float lift = Mathf.Max(0f, surfaceSnapOffset + surfaceSnapLift) * units;
+            if (TryRaycastSurfaceFromPivot(approximateWorldPos, axis, startMetres * units, distanceMetres * units, lift, out snappedWorldPos)) return true;
+            // Extend the search on the same geographic vertical. Never move the
+            // query to the collider bounds centre or another horizontal location.
+            return TryRaycastSurfaceFromPivot(approximateWorldPos, axis,
+                Mathf.Max(startMetres * 8f, 250f) * units,
+                Mathf.Max(distanceMetres * 16f, 2000f) * units, lift, out snappedWorldPos);
         }
         finally
         {
-            if (activatedSurfaceForSnap && restoreSurfaceActiveStateAfterSnap && surfaceSnapTargetObject != null)
+            if (activated && restoreSurfaceActiveStateAfterSnap && surfaceSnapTargetObject != null)
                 surfaceSnapTargetObject.SetActive(false);
         }
     }
 
     public bool RefreshLiveHeightAboveSurface(PointData data, Transform sourceNode)
     {
-        if (data == null || sourceNode == null || transformData == null)
-            return false;
-
+        if (data == null || sourceNode == null || transformData == null) return false;
+        FloatingIcon icon = sourceNode.GetComponent<FloatingIcon>();
+        if (data.elevationUnresolved && (icon == null || !icon.IsBeingManipulated)) return false;
+        data.SetElevationUnresolved(false);
         Transform parentRef = mapTransform != null ? mapTransform : transform;
-        Vector3 currentLocalPosition = GetStableMapLocalPosition(sourceNode, parentRef);
-        Vector3Double currentWgs = ColmapToWgs84(currentLocalPosition);
-
-        bool previouslyKnown = data.hasHeightAboveSurface;
-        double previousHeight = data.heightAboveSurface;
-        double previousAltitude = data.altitude;
-
-        if (CanQuerySurfaceHeight() &&
-            TryCalculateHeightAboveSurface(sourceNode, parentRef, out double calculatedHeight))
+        Vector3Double current = ColmapToWgs84(GetStableMapLocalPosition(sourceNode, parentRef));
+        double oldHeight = data.heightAboveSurface, oldAltitude = data.altitude;
+        bool hadHeight = data.hasHeightAboveSurface;
+        string oldSource = data.heightSource, oldStatus = data.heightStatus;
+        double calculated;
+        if (TryCalculateHeightAboveSurface(sourceNode, parentRef, out calculated))
         {
-            data.heightAboveSurface = calculatedHeight;
+            data.heightAboveSurface = calculated;
             data.hasHeightAboveSurface = true;
+            data.heightSource = "mesh";
+            data.heightStatus = calculated < 0d ? "below_surface" : "ok";
         }
-        else if (previouslyKnown &&
-                 IsFiniteNumber(previousHeight) &&
-                 IsFiniteNumber(previousAltitude) &&
-                 IsFiniteNumber(currentWgs.alt))
+        else if (hadHeight && IsFiniteNumber(oldHeight) && IsFiniteNumber(oldAltitude) && IsFiniteNumber(current.alt))
         {
-            // With the surface collider disabled, preserve the finalized raycast
-            // baseline and apply only the marker's altitude delta.
-            data.heightAboveSurface = Math.Max(
-                0d,
-                previousHeight + (currentWgs.alt - previousAltitude));
-            data.hasHeightAboveSurface = true;
+            data.heightAboveSurface = oldHeight + current.alt - oldAltitude;
+            data.heightSource = Math.Abs(current.alt - oldAltitude) > 1e-8 ? "altitude_delta" : "retained";
+            data.heightStatus = "query_failed";
         }
-
-        data.latitude = currentWgs.lat;
-        data.longitude = currentWgs.lon;
-        data.altitude = currentWgs.alt;
-
-        return data.hasHeightAboveSurface &&
-               (!previouslyKnown || Math.Abs(data.heightAboveSurface - previousHeight) > 1e-4);
+        else
+        {
+            data.hasHeightAboveSurface = false;
+            data.heightSource = "unavailable";
+            data.heightStatus = "no_surface";
+        }
+        data.latitude = current.lat; data.longitude = current.lon; data.altitude = current.alt;
+        return hadHeight != data.hasHeightAboveSurface || Math.Abs(oldHeight - data.heightAboveSurface) > 1e-4 ||
+            oldSource != data.heightSource || oldStatus != data.heightStatus;
     }
 
     private bool CanQuerySurfaceHeight()
@@ -1862,125 +1838,77 @@ public class JsonSpawner : MonoBehaviour
 
     private bool RefreshHeightAboveSurface(Transform pointTransform, Feature feature, PointData data, bool notifyDataChanged = true)
     {
-        if (pointTransform == null || data == null)
-            return false;
-
+        if (pointTransform == null || data == null) return false;
+        string before = feature == null || feature.properties == null ? null : JsonConvert.SerializeObject(feature.properties);
         Transform parentRef = mapTransform != null ? mapTransform : transform;
-        if (CanQuerySurfaceHeight() &&
-            TryCalculateHeightAboveSurface(pointTransform, parentRef, out double calculatedHeight))
+        double calculated;
+        if (!data.elevationUnresolved && TryCalculateHeightAboveSurface(pointTransform, parentRef, out calculated))
         {
-            bool changed = !data.hasHeightAboveSurface || Math.Abs(data.heightAboveSurface - calculatedHeight) > 1e-4;
-            float? previousStoredHeight = feature?.properties?.height_above_surface_m;
-            bool featureChanged = feature?.properties != null &&
-                                  (!previousStoredHeight.HasValue || Math.Abs(previousStoredHeight.Value - calculatedHeight) > 1e-4);
-            data.heightAboveSurface = calculatedHeight;
-            data.hasHeightAboveSurface = true;
-
-            if (feature?.properties != null)
-                feature.properties.height_above_surface_m = (float)calculatedHeight;
-
-            if (changed && notifyDataChanged)
-                data.NotifyDataChanged();
-
-            return featureChanged;
+            data.heightAboveSurface = calculated; data.hasHeightAboveSurface = true;
+            data.heightSource = "mesh"; data.heightStatus = calculated < 0d ? "below_surface" : "ok";
         }
+        else if (!data.elevationUnresolved && feature != null && feature.properties != null &&
+            feature.properties.height_above_surface_m.HasValue && IsFiniteNumber(feature.properties.height_above_surface_m.Value))
+        {
+            data.heightAboveSurface = feature.properties.height_above_surface_m.Value;
+            data.hasHeightAboveSurface = true; data.heightSource = "retained"; data.heightStatus = "query_failed";
+        }
+        else
+        {
+            data.hasHeightAboveSurface = false; data.heightSource = "unavailable";
+            data.heightStatus = data.elevationUnresolved ? "elevation_unresolved" : "no_surface";
+        }
+        if (feature != null) StorePointHeightMetadata(feature, data);
+        if (notifyDataChanged) data.NotifyDataChanged();
+        return feature != null && before != JsonConvert.SerializeObject(feature.properties);
+    }
 
-        float? storedHeight = feature?.properties?.height_above_surface_m;
-        if (!storedHeight.HasValue || !IsFiniteNumber(storedHeight.Value))
-            return false;
-
-        double fallbackHeight = Math.Max(0d, storedHeight.Value);
-        bool fallbackChanged = !data.hasHeightAboveSurface || Math.Abs(data.heightAboveSurface - fallbackHeight) > 1e-4;
-        data.heightAboveSurface = fallbackHeight;
-        data.hasHeightAboveSurface = true;
-
-        if (fallbackChanged && notifyDataChanged)
-            data.NotifyDataChanged();
-
-        return false;
+    private static void StorePointHeightMetadata(Feature feature, PointData data)
+    {
+        if (feature.properties == null) feature.properties = new Properties();
+        feature.properties.height_above_surface_m = data.hasHeightAboveSurface ? (float?)data.heightAboveSurface : null;
+        feature.properties.heightSource = data.heightSource;
+        feature.properties.heightStatus = data.heightStatus;
+        feature.properties.elevationStatus = data.elevationUnresolved ? "unresolved" : "available";
     }
 
     private bool TryCalculateHeightAboveSurface(Transform pointTransform, Transform parentRef, out double heightAboveSurface)
     {
         heightAboveSurface = 0d;
-        if (pointTransform == null || parentRef == null || transformData == null)
-            return false;
-
-        Vector3 pointLocalPosition = GetStableMapLocalPosition(pointTransform, parentRef);
-        Vector3 pointWorldPosition = parentRef.TransformPoint(pointLocalPosition);
-        Vector3 castAxis = GetWorldAltitudeAxis(parentRef);
-
-        bool activatedSurfaceForQuery = false;
-        PrepareSurfaceForSnap(ref activatedSurfaceForQuery);
-
-        // Height is sampled repeatedly while a marker is manipulated. Keep the hidden
-        // collider target active after the first query so its mesh is not reloaded each time.
-        float rayStartOffset = Mathf.Max(0.25f, surfaceSnapRayStartOffset);
-        float rayDistance = Mathf.Max(rayStartOffset + 0.5f, surfaceSnapRayDistance);
-
-        if (!TryRaycastSurfaceBelow(pointWorldPosition, castAxis, rayStartOffset, rayDistance, out Vector3 surfaceWorldPosition))
+        Vector3 axis;
+        float units;
+        if (pointTransform == null || !TryGetSurfaceQueryScale(parentRef, out axis, out units)) return false;
+        Vector3 local = GetStableMapLocalPosition(pointTransform, parentRef);
+        Vector3 world = parentRef.TransformPoint(local);
+        bool activated = false;
+        PrepareSurfaceForSnap(ref activated);
+        try
         {
-            float extendedStartOffset = Mathf.Max(rayStartOffset * 8f, 250f);
-            float extendedDistance = Mathf.Max(rayDistance * 16f, 2000f);
-            if (!TryRaycastSurfaceBelow(pointWorldPosition, castAxis, extendedStartOffset, extendedDistance, out surfaceWorldPosition))
-                return false;
+            Vector3 surface;
+            float start = Mathf.Max(0.25f, surfaceSnapRayStartOffset);
+            float distance = Mathf.Max(start + 0.5f, surfaceSnapRayDistance);
+            if (!TryRaycastSurfaceBelow(world, axis, start * units, distance * units, out surface) &&
+                !TryRaycastSurfaceBelow(world, axis, Mathf.Max(start * 8f, 250f) * units,
+                    Mathf.Max(distance * 16f, 2000f) * units, out surface)) return false;
+            Vector3Double markerWgs = ColmapToWgs84(local);
+            Vector3Double surfaceWgs = ColmapToWgs84(parentRef.InverseTransformPoint(surface));
+            heightAboveSurface = markerWgs.alt - surfaceWgs.alt;
+            return IsFiniteNumber(heightAboveSurface);
         }
-
-        Vector3 surfaceLocalPosition = parentRef.InverseTransformPoint(surfaceWorldPosition);
-        Vector3Double pointWgs = ColmapToWgs84(pointLocalPosition);
-        Vector3Double surfaceWgs = ColmapToWgs84(surfaceLocalPosition);
-        double height = pointWgs.alt - surfaceWgs.alt;
-
-        if (!IsFiniteNumber(height))
-            return false;
-
-        heightAboveSurface = Math.Max(0d, height);
-        return true;
+        finally
+        {
+            if (activated && restoreSurfaceActiveStateAfterSnap && surfaceSnapTargetObject != null)
+                surfaceSnapTargetObject.SetActive(false);
+        }
     }
 
     private bool TryRaycastSurfaceBelow(Vector3 pointWorldPosition, Vector3 castAxis, float rayStartOffset, float rayDistance, out Vector3 surfaceWorldPosition)
     {
-        surfaceWorldPosition = pointWorldPosition;
-        Vector3 origin = pointWorldPosition + castAxis * Mathf.Max(0.25f, rayStartOffset);
-        Ray ray = new Ray(origin, -castAxis);
-        float distance = Mathf.Max(0.5f, rayDistance);
-
-        if (surfaceSnapTargetObject != null)
-        {
-            Collider targetCollider = ResolveSurfaceQueryCollider();
-            if (targetCollider == null || !targetCollider.enabled || !targetCollider.gameObject.activeInHierarchy)
-                return false;
-
-            if (!targetCollider.Raycast(ray, out RaycastHit targetHit, distance))
-                return false;
-
-            double signedTargetHeight = Vector3.Dot(pointWorldPosition - targetHit.point, castAxis);
-            if (signedTargetHeight < -1e-4)
-                return false;
-
-            surfaceWorldPosition = targetHit.point;
-            return true;
-        }
-
-        RaycastHit[] hits = Physics.RaycastAll(ray, distance, surfaceSnapMask, QueryTriggerInteraction.Ignore);
-        if (hits == null || hits.Length == 0)
-            return false;
-
-        Array.Sort(hits, (left, right) => left.distance.CompareTo(right.distance));
-        foreach (RaycastHit hit in hits)
-        {
-            if (!IsValidSurfaceCollider(hit.collider))
-                continue;
-
-            double signedHeightInWorldSpace = Vector3.Dot(pointWorldPosition - hit.point, castAxis);
-            if (signedHeightInWorldSpace < -1e-4)
-                continue;
-
-            surfaceWorldPosition = hit.point;
-            return true;
-        }
-
-        return false;
+        // Historical method name retained for callers. Above-marker hits are
+        // deliberately accepted, so a below-surface marker remains negative.
+        Collider target = surfaceSnapTargetObject == null ? null : ResolveSurfaceQueryCollider();
+        if (surfaceSnapTargetObject != null && target == null) { surfaceWorldPosition = pointWorldPosition; return false; }
+        return GeographicSurfaceQuery.TryHit(target, pointWorldPosition, castAxis, rayStartOffset, rayDistance, surfaceSnapMask, out surfaceWorldPosition);
     }
 
     private Collider ResolveSurfaceQueryCollider()
@@ -2053,7 +1981,7 @@ public class JsonSpawner : MonoBehaviour
             if (!TryGetDouble(heights, out double parsedHeight) || !IsFiniteNumber(parsedHeight))
                 return false;
 
-            height = Math.Max(0d, parsedHeight);
+            height = parsedHeight;
             return true;
         }
 
@@ -2096,6 +2024,26 @@ public class JsonSpawner : MonoBehaviour
         feature.properties.heights_above_surface_m =
             BuildVertexHeightTree(feature.geometry.coordinates, heightByCoordinate);
         feature.properties.height_above_surface_m = null;
+        feature.properties.heightSources = BuildVertexMetadataTree(feature.geometry.coordinates, heightByCoordinate, true);
+        feature.properties.heightStatuses = BuildVertexMetadataTree(feature.geometry.coordinates, heightByCoordinate, false);
+    }
+
+    private static JToken BuildVertexMetadataTree(JToken coordinates, Dictionary<JArray, PointData> values, bool source)
+    {
+        JArray array = coordinates as JArray;
+        if (array == null) return JValue.CreateNull();
+        if (IsCoordinateTuple(array))
+        {
+            PointData data;
+            return values.TryGetValue(array, out data) && data != null
+                ? new JValue(source ? data.heightSource : data.heightStatus)
+                : new JValue(source ? "unavailable" : "no_surface");
+        }
+        JArray result = new JArray();
+        foreach (JToken child in array) result.Add(BuildVertexMetadataTree(child, values, source));
+        if (array.Count > 1 && JToken.DeepEquals(array[0], array[array.Count - 1]))
+            result[result.Count - 1] = result[0].DeepClone();
+        return result;
     }
 
     private static JToken BuildVertexHeightTree(
@@ -2112,7 +2060,7 @@ public class JsonSpawner : MonoBehaviour
                 pointData.hasHeightAboveSurface &&
                 IsFiniteNumber(pointData.heightAboveSurface))
             {
-                return new JValue(Math.Max(0d, pointData.heightAboveSurface));
+                return new JValue(pointData.heightAboveSurface);
             }
 
             return JValue.CreateNull();
@@ -2129,7 +2077,7 @@ public class JsonSpawner : MonoBehaviour
             coordinateArray[coordinateArray.Count - 1] is JArray lastCoordinate &&
             IsCoordinateTuple(firstCoordinate) &&
             IsCoordinateTuple(lastCoordinate) &&
-            AreCoordinatePairsNear(firstCoordinate, lastCoordinate) &&
+            JToken.DeepEquals(firstCoordinate, lastCoordinate) &&
             result.Count == coordinateArray.Count)
         {
             result[result.Count - 1] = result[0].DeepClone();
@@ -2149,22 +2097,10 @@ public class JsonSpawner : MonoBehaviour
     private bool TryRaycastSurfaceFromPivot(Vector3 pivot, Vector3 castAxis, float rayStartOffset, float rayDistance, float snapLift, out Vector3 snappedWorldPos)
     {
         snappedWorldPos = pivot;
-
-        Vector3 rayStartFromAbove = pivot + castAxis * Mathf.Max(0.25f, rayStartOffset);
-        if (Physics.Raycast(rayStartFromAbove, -castAxis, out RaycastHit hitDown, Mathf.Max(0.5f, rayDistance), surfaceSnapMask, QueryTriggerInteraction.Ignore))
-        {
-            snappedWorldPos = hitDown.point + castAxis * snapLift;
-            return true;
-        }
-
-        Vector3 rayStartFromBelow = pivot - castAxis * Mathf.Max(0.25f, rayStartOffset);
-        if (Physics.Raycast(rayStartFromBelow, castAxis, out RaycastHit hitUp, Mathf.Max(0.5f, rayDistance), surfaceSnapMask, QueryTriggerInteraction.Ignore))
-        {
-            snappedWorldPos = hitUp.point + castAxis * snapLift;
-            return true;
-        }
-
-        return false;
+        Vector3 hit;
+        if (!TryRaycastSurfaceBelow(pivot, castAxis, rayStartOffset, rayDistance, out hit)) return false;
+        snappedWorldPos = hit + castAxis * snapLift;
+        return true;
     }
 
     private void PrepareSurfaceForSnap(ref bool activatedSurfaceForSnap)
@@ -2934,6 +2870,7 @@ public class JsonSpawner : MonoBehaviour
         }
 
         Feature featureToDelete = mapping.parentFeature;
+        GeoJsonOutbox.RecordDeletion(currentRootData, featureToDelete);
 
         if (currentRootData != null && currentRootData.features != null)
             currentRootData.features.Remove(featureToDelete);
@@ -3000,6 +2937,9 @@ public class JsonSpawner : MonoBehaviour
         if (string.IsNullOrEmpty(featureId) || currentRootData?.features == null)
             return false;
 
+        foreach (Feature deleted in currentRootData.features.FindAll(f =>
+            string.Equals(f.id, featureId, StringComparison.OrdinalIgnoreCase)))
+            GeoJsonOutbox.RecordDeletion(currentRootData, deleted);
         int removedCount = currentRootData.features.RemoveAll(f =>
             string.Equals(f.id, featureId, StringComparison.OrdinalIgnoreCase));
 
@@ -3261,6 +3201,9 @@ public class JsonSpawner : MonoBehaviour
                 source     = "Ground Station",
                 altitude_m = (float)wgs.alt,
                 height_above_surface_m = data.hasHeightAboveSurface ? (float?)data.heightAboveSurface : null,
+                heightSource = data.heightSource,
+                heightStatus = data.heightStatus,
+                elevationStatus = data.elevationUnresolved ? "unresolved" : "available",
                 marker_color = "#ff0000"
             },
             geometry = new Geometry
@@ -3394,6 +3337,9 @@ public class JsonSpawner : MonoBehaviour
                 source     = source,
                 altitude_m = (float)wgs.alt,
                 height_above_surface_m = data.hasHeightAboveSurface ? (float?)data.heightAboveSurface : null,
+                heightSource = data.heightSource,
+                heightStatus = data.heightStatus,
+                elevationStatus = data.elevationUnresolved ? "unresolved" : "available",
                 marker_color = "#ff0000"
             },
             geometry = new Geometry { type = "Point", coordinates = coordsArray }
@@ -3483,8 +3429,6 @@ public class JsonSpawner : MonoBehaviour
 
         Transform parentRef = mapTransform != null ? mapTransform : transform;
 
-        string newId = AllocateNextFeatureId();
-
         JArray ring = new JArray();
         double firstAlt = 0d;
 
@@ -3498,15 +3442,14 @@ public class JsonSpawner : MonoBehaviour
                 firstAlt = wgs.alt;
         }
 
-        JArray firstCoord = ring[0] as JArray;
-        JArray lastCoord = ring[ring.Count - 1] as JArray;
-        bool alreadyClosed = firstCoord != null && lastCoord != null &&
-                             firstCoord.Count >= 2 && lastCoord.Count >= 2 &&
-                             Mathf.Approximately((float)firstCoord[0].Value<double>(), (float)lastCoord[0].Value<double>()) &&
-                             Mathf.Approximately((float)firstCoord[1].Value<double>(), (float)lastCoord[1].Value<double>());
-
-        if (!alreadyClosed && firstCoord != null)
-            ring.Add(new JArray { firstCoord[0].Value<double>(), firstCoord[1].Value<double>(), firstCoord.Count >= 3 ? firstCoord[2].Value<double>() : firstAlt });
+        string validationError;
+        if (!GeoJsonPolygonValidator.TryNormalizeRing(ring, true, out validationError))
+        {
+            ReportValidationError(validationError);
+            return null;
+        }
+        LastValidationError = null;
+        string newId = AllocateNextFeatureId();
 
         JArray polygonCoords = new JArray { ring };
 
@@ -3580,6 +3523,7 @@ public class JsonSpawner : MonoBehaviour
 
         if (currentRootData.features == null)
             currentRootData.features = new List<Feature>();
+        GeoJsonOutbox.Initialize(currentRootData, false);
     }
 
     public bool RegisterRuntimeLineNodes(string featureId, List<Transform> nodes)
@@ -3675,12 +3619,10 @@ public class JsonSpawner : MonoBehaviour
             return false;
 
         int ringUsableCount = outerRing.Count;
-        if (outerRing.Count > 1 &&
-            outerRing[0] is JArray first && outerRing[outerRing.Count - 1] is JArray last &&
-            first.Count >= 2 && last.Count >= 2 &&
-            Mathf.Approximately((float)first[0].Value<double>(), (float)last[0].Value<double>()) &&
-            Mathf.Approximately((float)first[1].Value<double>(), (float)last[1].Value<double>()))
-            ringUsableCount = outerRing.Count - 1;
+        if (ringUsableCount > 1 && GeoJsonPolygonValidator.SameHorizontal(outerRing[0] as JArray, outerRing[ringUsableCount - 1] as JArray))
+            ringUsableCount--;
+        HashSet<JArray> usedCoordinates = new HashSet<JArray>();
+        Transform polygonMap = mapTransform != null ? mapTransform : transform;
 
         int registered = 0;
         int maxCount = Math.Min(nodes.Count, ringUsableCount);
@@ -3691,8 +3633,20 @@ public class JsonSpawner : MonoBehaviour
             Transform node = nodes[i];
             if (node == null) continue;
 
-            JArray coordArray = outerRing[i] as JArray;
-            if (coordArray == null || coordArray.Count < 3) continue;
+            Vector3Double nodeWgs = ColmapToWgs84(polygonMap.InverseTransformPoint(node.position));
+            JArray coordArray = null;
+            double nearestDistance = double.MaxValue;
+            for (int coordinateIndex = 0; coordinateIndex < ringUsableCount; coordinateIndex++)
+            {
+                JArray candidate = outerRing[coordinateIndex] as JArray;
+                if (candidate == null || candidate.Count < 3 || usedCoordinates.Contains(candidate)) continue;
+                double dx = candidate[0].Value<double>() - nodeWgs.lon;
+                double dy = candidate[1].Value<double>() - nodeWgs.lat;
+                double distance = dx * dx + dy * dy;
+                if (distance < nearestDistance) { coordArray = candidate; nearestDistance = distance; }
+            }
+            if (coordArray == null) continue;
+            usedCoordinates.Add(coordArray);
 
             nodeMappings.RemoveAll(m => m.node == node);
             nodeMappings.Add(new NodeMapping
@@ -3780,3 +3734,4 @@ public class JsonSpawner : MonoBehaviour
         lineNodeColorHexByNode.Remove(node);
     }
 }
+

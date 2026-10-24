@@ -447,7 +447,7 @@ public class XRControllerLogger : MonoBehaviour
         if ((currentState == InteractionState.DrawingLine || currentState == InteractionState.DrawingPolygon) &&
             newState != InteractionState.DrawingLine && newState != InteractionState.DrawingPolygon)
         {
-            CommitCurrentLineIfNeeded();
+            if (!CommitCurrentLineIfNeeded()) return;
             _undoStack.Clear();
         }
 
@@ -907,60 +907,44 @@ public class XRControllerLogger : MonoBehaviour
             Destroy(line.Renderer.gameObject);
     }
 
-    private void CommitCurrentLineIfNeeded()
+    private bool CommitCurrentLineIfNeeded()
     {
         LineSession activeLine = _currentLine;
-        if (activeLine == null)
-            return;
-
-        if (activeLine.IsSaved)
-        {
-            RemoveUndoCommandsForSession(activeLine);
-            return;
-        }
-
+        if (activeLine == null) return true;
+        if (activeLine.IsSaved) { RemoveUndoCommandsForSession(activeLine); return true; }
         if (!IsLineSessionAlive(activeLine))
         {
             RemoveUndoCommandsForSession(activeLine);
-            _lineSessions.Remove(activeLine);
-            _currentLine = null;
-            return;
+            _lineSessions.Remove(activeLine); _currentLine = null;
+            return true;
         }
-
         CompactDeadNodes(activeLine);
-        if (activeLine.RuntimeLine != null)
-            activeLine.RuntimeLine.RefreshNow();
-
+        if (activeLine.RuntimeLine != null) activeLine.RuntimeLine.RefreshNow();
         List<Vector3> positions = new List<Vector3>(activeLine.Nodes.Count);
-        foreach (Transform node in activeLine.Nodes)
-            if (node != null)
-                positions.Add(node.position);
-
-        bool polygonMode = activeLine.IsPolygon;
-        if (polygonMode ? positions.Count >= 3 : positions.Count >= 2)
+        foreach (Transform node in activeLine.Nodes) if (node != null) positions.Add(node.position);
+        bool polygon = activeLine.IsPolygon;
+        if (positions.Count < (polygon ? 3 : 2))
         {
-            Color lineColor = activeLine.StrokeColor;
-            string featureClass = BuildDrawingClassName(lineColor);
-            string polygonClass = GetPolygonClassName(currentPolygonCategory);
-            string polygonCategory = "navigation";
-            string featureId = polygonMode
-                ? _persistence?.SavePolygon(positions, polygonClass, polygonCategory, lineColor)
-                : _persistence?.SaveLine(positions, featureClass, lineColor);
-
-            if (!string.IsNullOrEmpty(featureId))
-            {
-                if (polygonMode)
-                    _persistence.RegisterRuntimePolygonNodes(featureId, activeLine.Nodes);
-                else
-                    _persistence.RegisterRuntimeLineNodes(featureId, activeLine.Nodes);
-
-                RegisterLineNodesToInfoPanel(activeLine, featureId);
-            }
+            Debug.LogWarning("[XRControllerLogger] Add more vertices or cancel the unfinished annotation.");
+            return false;
         }
-
+        Color color = activeLine.StrokeColor;
+        string id = polygon
+            ? _persistence?.SavePolygon(positions, GetPolygonClassName(currentPolygonCategory), "navigation", color)
+            : _persistence?.SaveLine(positions, BuildDrawingClassName(color), color);
+        if (string.IsNullOrEmpty(id))
+        {
+            // Validation failed. Keep the session and undo history available.
+            Debug.LogWarning("[XRControllerLogger] Annotation remains editable because saving failed.");
+            return false;
+        }
+        if (polygon) _persistence.RegisterRuntimePolygonNodes(id, activeLine.Nodes);
+        else _persistence.RegisterRuntimeLineNodes(id, activeLine.Nodes);
+        RegisterLineNodesToInfoPanel(activeLine, id);
         activeLine.IsSaved = true;
         RemoveUndoCommandsForSession(activeLine);
         _currentLine = null;
+        return true;
     }
 
     private void RemoveUndoCommandsForSession(LineSession line)
@@ -1441,3 +1425,4 @@ public class XRControllerLogger : MonoBehaviour
         return -1;
     }
 }
+
