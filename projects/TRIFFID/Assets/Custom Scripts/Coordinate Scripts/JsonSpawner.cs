@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 public class JsonSpawner : MonoBehaviour
 {
@@ -64,6 +65,24 @@ public class JsonSpawner : MonoBehaviour
     [Min(0f)]
     [Tooltip("Seconds between automatic save attempts while local annotation data is dirty.")]
     [SerializeField] private float autoSaveIntervalSeconds = 3f;
+
+    [Header("Save Profiling")]
+    [Tooltip("Adds stage durations to the existing save log and reports synchronization commits taking at least 16 ms.")]
+    [SerializeField] private bool logSaveStageTimings = true;
+
+    private sealed class SaveStageTimings
+    {
+        public double world, normalize, outbox, labels, serialize;
+    }
+
+    private static double MeasureSaveStage(string name, Action action)
+    {
+        long started = Stopwatch.GetTimestamp();
+        UnityEngine.Profiling.Profiler.BeginSample(name);
+        try { action(); }
+        finally { UnityEngine.Profiling.Profiler.EndSample(); }
+        return (Stopwatch.GetTimestamp() - started) * 1000d / Stopwatch.Frequency;
+    }
 
     [Header("Runtime Collider State")]
     [Tooltip("Initial enabled state applied to colliders on spawned annotation objects.")]
@@ -661,12 +680,13 @@ public class JsonSpawner : MonoBehaviour
             return;
         }
 
+        SaveStageTimings timings = new SaveStageTimings();
         try
         {
-            SyncWorldToJSON();
-            NormalizeForJsonWrite();
-            GeoJsonOutbox.CaptureChanges(currentRootData, DateTime.UtcNow, 0.5d);
-            UpdateSyncStatusLabels();
+            timings.world = MeasureSaveStage("AR2.Save.WorldToJson", SyncWorldToJSON);
+            timings.normalize = MeasureSaveStage("AR2.Save.Normalize", NormalizeForJsonWrite);
+            timings.outbox = MeasureSaveStage("AR2.Save.CaptureChanges", () => GeoJsonOutbox.CaptureChanges(currentRootData, DateTime.UtcNow, 0.5d));
+            timings.labels = MeasureSaveStage("AR2.Save.StatusLabels", UpdateSyncStatusLabels);
         }
         catch (InvalidDataException ex)
         {
@@ -675,10 +695,10 @@ public class JsonSpawner : MonoBehaviour
         }
         currentRootData.lastModified = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ");
 
-        string json;
+        string json = null;
         try
         {
-            json = JsonConvert.SerializeObject(currentRootData, Formatting.Indented);
+            timings.serialize = MeasureSaveStage("AR2.Save.Serialize", () => json = JsonConvert.SerializeObject(currentRootData, Formatting.Indented));
         }
         catch (Exception ex)
         {
@@ -687,7 +707,7 @@ public class JsonSpawner : MonoBehaviour
         }
 
         int saveVersion = dataVersion;
-        _ = WriteJsonAsync(json, saveVersion);
+        _ = WriteJsonAsync(json, saveVersion, timings);
     }
 
     internal int LocalPersistenceVersion => dataVersion;
@@ -696,6 +716,15 @@ public class JsonSpawner : MonoBehaviour
         saveInProgress || saveQueued || dataVersion > lastSavedVersion;
 
     internal bool TryWriteExternalJsonSnapshotAtomically(string json, int expectedLocalVersion)
+    {
+        bool committed = false;
+        double elapsed = MeasureSaveStage("AR2.Sync.Commit", () => committed = WriteExternalJsonSnapshot(json, expectedLocalVersion));
+        if (logSaveStageTimings && elapsed >= 16d)
+            Debug.Log($"[AR2 SyncTiming] commit={elapsed:F2}ms chars={json.Length} written={committed}");
+        return committed;
+    }
+
+    private bool WriteExternalJsonSnapshot(string json, int expectedLocalVersion)
     {
         if (HasPendingLocalPersistence || dataVersion != expectedLocalVersion)
             return false;
@@ -740,27 +769,41 @@ public class JsonSpawner : MonoBehaviour
         }
     }
 
-    private async Task WriteJsonAsync(string json, int saveVersion)
+    private async Task WriteJsonAsync(string json, int saveVersion, SaveStageTimings timings)
     {
         saveInProgress = true;
         bool writeSucceeded = false;
 
         string localSavePath = saveFilePath;
+        long writeTicks = 0L, workerFinished = 0L;
 
         try
         {
             await Task.Run(() =>
             {
-                lock (fileWriteLock)
+                long started = Stopwatch.GetTimestamp();
+                try
                 {
-                    diskSaves.Write(localSavePath, json, saveVersion);
+                    lock (fileWriteLock)
+                    {
+                        diskSaves.Write(localSavePath, json, saveVersion);
+                    }
+                }
+                finally
+                {
+                    workerFinished = Stopwatch.GetTimestamp();
+                    writeTicks = workerFinished - started;
                 }
             });
 
+            double resumeMs = (Stopwatch.GetTimestamp() - workerFinished) * 1000d / Stopwatch.Frequency;
             writeSucceeded = true;
             lastSavedVersion = Math.Max(lastSavedVersion, saveVersion);
             autoSaveTimer = 0f;
-            Debug.Log($"[JsonSpawner] Saved to: {saveFilePath} (lastModified: {currentRootData.lastModified})");
+            string detail = logSaveStageTimings
+                ? $" | [AR2 SaveTiming] v={saveVersion} chars={json.Length} world={timings.world:F2}ms normalize={timings.normalize:F2}ms outbox={timings.outbox:F2}ms labels={timings.labels:F2}ms serialize={timings.serialize:F2}ms backgroundWrite={writeTicks * 1000d / Stopwatch.Frequency:F2}ms resumeWait={resumeMs:F2}ms followUp={saveQueued || dataVersion > lastSavedVersion}"
+                : string.Empty;
+            MeasureSaveStage("AR2.Save.CompletionLog", () => Debug.Log($"[JsonSpawner] Saved to: {saveFilePath} (lastModified: {currentRootData.lastModified})" + detail));
         }
         catch (Exception ex)
         {
@@ -772,7 +815,7 @@ public class JsonSpawner : MonoBehaviour
             if (writeSucceeded && (saveQueued || dataVersion > lastSavedVersion))
             {
                 saveQueued = false;
-                SaveCurrentStateToPersistentStorage();
+                MeasureSaveStage("AR2.Save.QueuedPreparation", SaveCurrentStateToPersistentStorage);
             }
         }
     }
