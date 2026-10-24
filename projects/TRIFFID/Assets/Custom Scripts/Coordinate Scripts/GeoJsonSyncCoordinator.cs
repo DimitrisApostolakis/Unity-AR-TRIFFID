@@ -89,6 +89,21 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
     [Tooltip("Feature ID used by the Keep Local, Accept Server, and Restore Deletion context-menu actions.")]
     [SerializeField] private string resolutionFeatureId;
 
+    [Header("Runtime JSON Diagnostics")]
+    [SerializeField] private int localSnapshotReadCount;
+    [SerializeField] private int localSnapshotWriteCount;
+    public int LocalSnapshotReadCount => localSnapshotReadCount;
+    public int LocalSnapshotWriteCount => localSnapshotWriteCount;
+
+    private bool localSnapshotObserved;
+    private string observedPath;
+    private bool observedFileExists;
+    private long observedFileLength;
+    private DateTime observedFileWriteUtc;
+    private int observedPersistenceVersion;
+    private DateTime nextPendingOperationUtc = DateTime.MinValue;
+    private bool observedReconciliationNeeded;
+
     private bool refreshRequested;
     private bool restorePendingState;
     private DateTime nextRemoteCheck;
@@ -194,6 +209,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
                 lastObservedLocalVersion = jsonSpawner.LocalPersistenceVersion;
                 lastLocalChangeUtc = DateTime.UtcNow;
             }
+            if (!NeedsLocalInspection()) continue;
             Root local;
             if (!Read(out local)) continue;
             int version = jsonSpawner.LocalPersistenceVersion;
@@ -306,13 +322,60 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
         }
     }
 
+    private bool NeedsLocalInspection()
+    {
+        if (!localSnapshotObserved || restorePendingState || refreshRequested) return true;
+        DateTime now = DateTime.UtcNow;
+        if (now >= nextPendingOperationUtc ||
+            ((enableRemotePolling || observedReconciliationNeeded) && now >= nextRemoteCheck)) return true;
+        if (observedPersistenceVersion != jsonSpawner.LocalPersistenceVersion) return true;
+        try
+        {
+            string path = jsonSpawner.GetResolvedSaveFilePath();
+            if (!string.Equals(path, observedPath, StringComparison.Ordinal)) return true;
+            FileInfo file = new FileInfo(path);
+            bool exists = file.Exists;
+            return exists != observedFileExists ||
+                (exists && (file.Length != observedFileLength || file.LastWriteTimeUtc != observedFileWriteUtc));
+        }
+        catch { return true; } // Read reports errors and retains the pending data.
+    }
+
+    private void ObserveLocalSnapshot(Root root, string path, bool exists, long length, DateTime writeUtc, int version)
+    {
+        observedPath = path;
+        observedFileExists = exists;
+        observedFileLength = length;
+        observedFileWriteUtc = writeUtc;
+        observedPersistenceVersion = version;
+        nextPendingOperationUtc = DateTime.MaxValue;
+        observedReconciliationNeeded = false;
+        foreach (GeoJsonPendingEdit edit in root.syncState.pending)
+        {
+            if (edit.status == "reconcile") observedReconciliationNeeded = true;
+            if (edit.status == "conflict" || edit.status == "reconcile" || edit.status == "inflight" ||
+                (edit.kind == "delete" && !root.syncState.remoteIds.ContainsKey(edit.featureId))) continue;
+            long ticks = Math.Min(DateTime.MaxValue.Ticks, Math.Max(0L, edit.notBeforeUtcTicks));
+            DateTime due = new DateTime(ticks, DateTimeKind.Utc);
+            if (due < nextPendingOperationUtc) nextPendingOperationUtc = due;
+        }
+        localSnapshotObserved = true;
+    }
+
     private bool Read(out Root root)
     {
         root = null;
         try
         {
             saveFileAbsolutePath = jsonSpawner.GetResolvedSaveFilePath();
-            if (!File.Exists(saveFileAbsolutePath))
+            // Observe metadata before reading. An external replacement during
+            // the read will then be detected on the next inspection.
+            FileInfo file = new FileInfo(saveFileAbsolutePath);
+            bool exists = file.Exists;
+            long length = exists ? file.Length : 0L;
+            DateTime writeUtc = exists ? file.LastWriteTimeUtc : DateTime.MinValue;
+            int version = jsonSpawner.LocalPersistenceVersion;
+            if (!exists)
             {
                 root = new Root { features = new List<Feature>() };
                 GeoJsonOutbox.Initialize(root, false);
@@ -320,9 +383,11 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
             else
             {
                 root = JsonConvert.DeserializeObject<Root>(File.ReadAllText(saveFileAbsolutePath));
+                localSnapshotReadCount++;
                 if (root == null) throw new InvalidDataException("Local GeoJSON is empty.");
                 GeoJsonOutbox.Initialize(root, true);
             }
+            ObserveLocalSnapshot(root, saveFileAbsolutePath, exists, length, writeUtc, version);
             return true;
         }
         catch (Exception ex) { NotifyStatus("Cannot read local edits: " + ex.Message); return false; }
@@ -335,6 +400,10 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
             if (IsLocalBusy()) return false;
             string json = JsonConvert.SerializeObject(root, Formatting.Indented);
             if (!jsonSpawner.TryWriteExternalJsonSnapshotAtomically(json, expectedVersion)) return false;
+            localSnapshotWriteCount++;
+            // Never reuse a mutated in-memory snapshot after committing. Read
+            // the durable state once, then use cheap metadata checks while idle.
+            localSnapshotObserved = false;
             if (respawn) jsonSpawner.SpawnFromJson();
             return true;
         }

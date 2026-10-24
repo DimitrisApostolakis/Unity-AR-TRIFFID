@@ -38,12 +38,32 @@ If these dependencies are not in their usual locations, set `AR2_MONO`,
 `AR2_CSC`, and `AR2_NEWTONSOFT_DLL`. A private Mono installation can also use
 `AR2_MONO_CONFIG`, `MONO_PATH`, and `LD_LIBRARY_PATH`.
 
-The verified result is **52 core checks and 8 coordinator checks passed**.
+The verified result is **52 core checks and 12 coordinator checks passed**.
 The runner compiles the production data models, outbox, polygon validator,
 atomic writer, payload parser, and synchronization coordinator with compiler
 warnings treated as errors. Coordinator checks use simulated scheduling,
 transport, and local-file ownership. They do not execute Unity physics,
 the complete application, or a real server.
+
+## Repeated JSON work and scene pauses
+
+The coordinator checks file metadata at its local scan interval. It parses and
+hashes JSON when the file or persistence version changes, a pending operation
+becomes due, or a remote check is requested/due. An unchanged idle snapshot no
+longer gets parsed and hashed on every scan.
+
+In Play mode, inspect **Runtime JSON Diagnostics** on
+`GeoJsonSyncCoordinator`. **Local Snapshot Read Count** counts its actual JSON
+reads, and **Local Snapshot Write Count** counts its successful commits. These
+counters cover the coordinator, not direct `JsonSpawner` saves, which produce
+the `Saved to:` Console message. Occasional reads during remote polling and
+writes for actual edits, dispatch records, and acknowledgements are expected.
+
+Move, rotate, and scale only the map for 20 seconds, then leave it idle. Record
+both counters before and after, the number of `Saved to:` messages, and whether
+the pause recurs. This distinguishes repeated JSON work from other costs such
+as rendering or collider updates. A profiler capture is needed to attribute
+any remaining frame-time spike.
 
 ## Unity checks to run locally
 

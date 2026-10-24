@@ -14,6 +14,53 @@ public static class CoordinatorRegressionTests
     public static int Run()
     {
         passed=failed=0;
+        Test("idle coordinator does not repeatedly parse or write unchanged JSON", () =>
+        {
+            Feature original=Point("a",1);
+            using(Fixture f=new Fixture(Clean(original),original))
+            {
+                f.Steps(20);
+                int reads=f.worker.LocalSnapshotReadCount, writes=f.worker.LocalSnapshotWriteCount;
+                Check(reads==1 && writes==0);
+                f.Steps(100);
+                Check(f.worker.LocalSnapshotReadCount==reads && f.worker.LocalSnapshotWriteCount==writes && f.api.fetchCount==0);
+            }
+        });
+        Test("idle coordinator detects an external edit without a persistence version change", () =>
+        {
+            Feature original=Point("a",1);
+            using(Fixture f=new Fixture(Clean(original),original))
+            {
+                f.Steps(10);
+                Root changed=f.Load(); ((JArray)changed.features[0].geometry.coordinates)[0]=2d;
+                DateTime previous=File.GetLastWriteTimeUtc(f.spawner.path);
+                GeoJsonAtomicFile.Write(f.spawner.path,JsonConvert.SerializeObject(changed));
+                File.SetLastWriteTimeUtc(f.spawner.path,previous.AddSeconds(2));
+                f.Until(()=>f.api.updateCount==1 && f.Load().syncState.pending.Count==0);
+                Equal(X(f.api.server[0]),2); Check(f.spawner.LocalPersistenceVersion==0);
+            }
+        });
+        Test("manual remote refresh wakes an idle coordinator", () =>
+        {
+            Feature original=Point("a",1);
+            using(Fixture f=new Fixture(Clean(original),original))
+            {
+                f.Steps(10); f.api.server.Add(Point("robot_b",7)); f.worker.RefreshFromServer();
+                f.Until(()=>f.Load().features.Any(p=>p.id=="robot_b"));
+                Check(f.api.fetchCount==1);
+            }
+        });
+        Test("a deferred pending operation wakes the idle coordinator when due", () =>
+        {
+            Root root=Empty(); root.features.Add(Point("feature_a",1)); GeoJsonOutbox.CaptureChanges(root,DateTime.UtcNow);
+            root.syncState.pending[0].notBeforeUtcTicks=DateTime.UtcNow.AddMilliseconds(500).Ticks;
+            using(Fixture f=new Fixture(root))
+            {
+                f.Steps(10); Check(f.api.createCount==0 && f.worker.LocalSnapshotReadCount==1);
+                System.Threading.Thread.Sleep(550);
+                f.Until(()=>f.api.createCount==1 && f.Load().syncState.pending.Count==0);
+            }
+        });
         Test("coordinator restores an offline create and delivers it after reconnection", () =>
         {
             Root root=Empty(); root.features.Add(Point("feature_a",1)); GeoJsonOutbox.CaptureChanges(root,DateTime.UtcNow);
