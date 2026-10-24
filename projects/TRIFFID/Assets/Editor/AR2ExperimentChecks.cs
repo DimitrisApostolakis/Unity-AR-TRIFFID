@@ -42,17 +42,32 @@ public static class AR2ExperimentChecks
         {
             GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cube);
             marker.hideFlags = HideFlags.HideAndDontSave;
-            Material material = marker.GetComponent<Renderer>().material;
+            Material material = null;
             try
             {
+                Renderer renderer = marker.GetComponent<Renderer>();
+                material = new Material(renderer.sharedMaterial);
+                material.hideFlags = HideFlags.HideAndDontSave;
                 material.color = Color.green;
+                renderer.sharedMaterial = material;
                 PointData data = marker.AddComponent<PointData>();
                 data.SetElevationUnresolved(true);
-                Require(data.elevationUnresolved && material.color != Color.green, "Unresolved marker has no visible flag.");
+                Material highlight = renderer.sharedMaterial;
+                Require(data.elevationUnresolved && highlight != material && highlight.color != Color.green, "Unresolved marker has no visible flag.");
+                Require(material.color == Color.green, "Highlight changed the original material.");
                 data.SetElevationUnresolved(false);
-                Require(!data.elevationUnresolved && material.color == Color.green, "Resolved marker retained the unresolved colour.");
+                Require(!data.elevationUnresolved && renderer.sharedMaterial == material && material.color == Color.green, "Resolved marker retained the unresolved colour.");
+                if (!Application.isPlaying) Require(highlight == null, "Resolved marker leaked its temporary material.");
+                data.SetElevationUnresolved(true);
+                highlight = renderer.sharedMaterial;
+                UnityEngine.Object.DestroyImmediate(marker);
+                if (!Application.isPlaying) Require(highlight == null, "Destroyed marker leaked its temporary material.");
             }
-            finally { UnityEngine.Object.DestroyImmediate(marker); UnityEngine.Object.DestroyImmediate(material); }
+            finally
+            {
+                if (marker != null) UnityEngine.Object.DestroyImmediate(marker);
+                if (material != null) UnityEngine.Object.DestroyImmediate(material);
+            }
         });
         string result = "AR2 regression checks: core " + (core == 0 ? "passed" : "FAILED") +
             ", Unity physics " + physicsPassed + " passed, " + physicsFailed + " failed.";
