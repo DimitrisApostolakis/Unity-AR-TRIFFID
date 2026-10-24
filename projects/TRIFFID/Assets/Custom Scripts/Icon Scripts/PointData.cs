@@ -2,6 +2,9 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 
+// The editor regression runner also creates and destroys markers outside Play
+// mode. Receive lifecycle callbacks there so temporary materials are released.
+[ExecuteAlways]
 public class PointData : MonoBehaviour
 {
     public string pointClass = "-";
@@ -29,28 +32,31 @@ public class PointData : MonoBehaviour
 
     public void SetElevationUnresolved(bool unresolved)
     {
-        if (unresolved && !elevationUnresolved)
-        {
-            foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
-            {
-                Material original = renderer.sharedMaterial;
-                if (original == null) continue;
-                // Own the temporary copy explicitly. Accessing renderer.material
-                // would implicitly instantiate a copy and warns in Edit mode.
-                Material highlight = new Material(original);
-                highlight.hideFlags = HideFlags.HideAndDontSave;
-                highlight.color = new Color(1f, 0.25f, 1f);
-                elevationMaterials[renderer] = new ElevationMaterial { original = original, highlight = highlight };
-                renderer.sharedMaterial = highlight;
-            }
-        }
-        else if (!unresolved && elevationUnresolved)
+        elevationUnresolved = unresolved;
+        if (!unresolved || !isActiveAndEnabled)
         {
             ReleaseElevationMaterials();
+            return;
         }
-        elevationUnresolved = unresolved;
+        if (elevationMaterials.Count != 0) return;
+        foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
+        {
+            Material original = renderer.sharedMaterial;
+            if (original == null) continue;
+            // Own the temporary copy explicitly. Accessing renderer.material
+            // would implicitly instantiate a copy and warns in Edit mode.
+            Material highlight = new Material(original);
+            highlight.hideFlags = HideFlags.HideAndDontSave;
+            highlight.color = new Color(1f, 0.25f, 1f);
+            elevationMaterials[renderer] = new ElevationMaterial { original = original, highlight = highlight };
+            renderer.sharedMaterial = highlight;
+        }
     }
 
+    private void OnEnable() { SetElevationUnresolved(elevationUnresolved); }
+    // OnDisable also runs before script reload and when a marker is hidden.
+    // Retain the unresolved flag so OnEnable can restore the highlight.
+    private void OnDisable() { ReleaseElevationMaterials(); }
     private void OnDestroy() { ReleaseElevationMaterials(); }
 
     private void ReleaseElevationMaterials()

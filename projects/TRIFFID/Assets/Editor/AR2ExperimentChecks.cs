@@ -55,6 +55,20 @@ public static class AR2ExperimentChecks
                 Material highlight = renderer.sharedMaterial;
                 Require(data.elevationUnresolved && highlight != material && highlight.color != Color.green, "Unresolved marker has no visible flag.");
                 Require(material.color == Color.green, "Highlight changed the original material.");
+                if (!Application.isPlaying)
+                {
+                    data.enabled = false;
+                    Require(highlight == null && renderer.sharedMaterial == material, "Disabled component leaked its temporary material.");
+                    Require(data.elevationUnresolved, "Disabling the component lost the unresolved status.");
+                    data.enabled = true;
+                    highlight = renderer.sharedMaterial;
+                    Require(highlight != material && highlight.color != Color.green, "Re-enabled component did not restore its highlight.");
+                    marker.SetActive(false);
+                    Require(highlight == null && renderer.sharedMaterial == material, "Inactive marker leaked its temporary material.");
+                    marker.SetActive(true);
+                    highlight = renderer.sharedMaterial;
+                    Require(highlight != material && highlight.color != Color.green, "Reactivated marker did not restore its highlight.");
+                }
                 data.SetElevationUnresolved(false);
                 Require(!data.elevationUnresolved && renderer.sharedMaterial == material && material.color == Color.green, "Resolved marker retained the unresolved colour.");
                 if (!Application.isPlaying) Require(highlight == null, "Resolved marker leaked its temporary material.");
