@@ -55,16 +55,32 @@ public class MeshPathJsonLoader : MonoBehaviour
     [SerializeField, HideInInspector] private string lastResolvedMeshPath;
     [SerializeField, HideInInspector] private string lastStatus;
 
+    [Header("Runtime Mesh Diagnostics")]
+    [SerializeField] private int meshLoadCount;
+    [SerializeField] private int meshCacheHitCount;
+    [SerializeField] private int colliderAssignmentCount;
+    public int MeshLoadCount => meshLoadCount;
+    public int MeshCacheHitCount => meshCacheHitCount;
+    public int ColliderAssignmentCount => colliderAssignmentCount;
+
+    private Mesh cachedMesh;
+    private bool ownsCachedMesh;
+    private string cachedSourcePath;
+    private MeshLoadMode cachedLoadMode;
+    private DateTime cachedWriteUtc;
+    private long cachedFileLength;
+    private string cachedAssetDependency;
+
     private void OnEnable()
     {
         if (loadOnEnable)
-            LoadAndApplyMesh();
+            LoadConfiguredMesh(false);
     }
 
     private void Start()
     {
         if (loadOnStart)
-            LoadAndApplyMesh();
+            LoadConfiguredMesh(false);
     }
 
     [ContextMenu("Validate Paths")]
@@ -92,6 +108,19 @@ public class MeshPathJsonLoader : MonoBehaviour
     [ContextMenu("Load And Apply Mesh")]
     public void LoadAndApplyMesh()
     {
+        // An explicit user request reloads even if file metadata is unchanged.
+        LoadConfiguredMesh(true);
+    }
+
+    private void LoadConfiguredMesh(bool forceReload)
+    {
+        UnityEngine.Profiling.Profiler.BeginSample("AR2.Mesh.EnsureLoaded");
+        try { LoadConfiguredMeshCore(forceReload); }
+        finally { UnityEngine.Profiling.Profiler.EndSample(); }
+    }
+
+    private void LoadConfiguredMeshCore(bool forceReload)
+    {
         string meshPath;
         if (!TryResolveMeshPath(out meshPath))
             return;
@@ -99,12 +128,61 @@ public class MeshPathJsonLoader : MonoBehaviour
         if (!ValidateTarget())
             return;
 
+        bool useAssetDatabase;
+        if (!TryDetermineLoadMethod(meshPath, out useAssetDatabase)) return;
+        DateTime writeUtc;
+        long length;
+        string assetDependency = string.Empty;
+        try
+        {
+            FileInfo file = new FileInfo(meshPath);
+            bool exists = file.Exists;
+            writeUtc = exists ? file.LastWriteTimeUtc : DateTime.MinValue;
+            length = exists ? file.Length : -1L;
+#if UNITY_EDITOR
+            if (useAssetDatabase && ProjectPathResolver.TryGetUnityProjectRelativePath(meshPath, out string assetPath))
+                assetDependency = AssetDatabase.GetAssetDependencyHash(assetPath).ToString();
+#endif
+        }
+        catch (Exception exception)
+        {
+            Fail("Could not inspect mesh source: " + exception.Message);
+            return;
+        }
+
+        bool cacheHit = !forceReload && cachedMesh != null && cachedLoadMode == meshLoadMode &&
+            string.Equals(cachedSourcePath, meshPath, StringComparison.Ordinal) &&
+            cachedWriteUtc == writeUtc && cachedFileLength == length && cachedAssetDependency == assetDependency;
+        if (cacheHit)
+        {
+            // Re-enabling a surface for a height query is not a source reload.
+            // ApplyMesh also avoids recooking an already assigned collider.
+            if (ApplyMesh(cachedMesh, false)) meshCacheHitCount++;
+            return;
+        }
+
         Mesh mesh;
         if (!TryLoadMesh(meshPath, out mesh))
             return;
 
-        if (!ApplyMesh(mesh))
+        bool ownsNewMesh = !useAssetDatabase;
+        if (!ApplyMesh(mesh, true))
+        {
+            if (ownsNewMesh) DestroyOwnedMesh(mesh);
             return;
+        }
+
+        Mesh previous = cachedMesh;
+        bool ownedPrevious = ownsCachedMesh;
+        cachedMesh = mesh;
+        ownsCachedMesh = ownsNewMesh;
+        cachedSourcePath = meshPath;
+        cachedLoadMode = meshLoadMode;
+        cachedWriteUtc = writeUtc;
+        cachedFileLength = length;
+        cachedAssetDependency = assetDependency;
+        meshLoadCount++;
+        if (ownedPrevious && previous != null && previous != mesh) DestroyOwnedMesh(previous);
 
         GameObject target = targetObject != null ? targetObject : gameObject;
         lastStatus =
@@ -114,10 +192,43 @@ public class MeshPathJsonLoader : MonoBehaviour
             "Resolved JSON Path: " + DisplayPath(lastResolvedJsonPath) + "\n" +
             "Resolved Mesh Path: " + DisplayPath(lastResolvedMeshPath) + "\n" +
             "Vertices: " + mesh.vertexCount + "\n" +
-            "Triangles: " + (mesh.triangles.Length / 3);
+            "Triangles: " + CountTriangles(mesh);
 
         if (logDetails)
             Debug.Log(lastStatus, this);
+    }
+
+    private static long CountTriangles(Mesh mesh)
+    {
+        long count = 0;
+        for (int i = 0; i < mesh.subMeshCount; i++) count += (long)mesh.GetIndexCount(i) / 3L;
+        return count;
+    }
+
+    private void OnDestroy() { ReleaseLoadedMesh(); }
+
+    private void ReleaseLoadedMesh()
+    {
+        if (ownsCachedMesh && cachedMesh != null)
+        {
+            GameObject target = targetObject != null ? targetObject : gameObject;
+            if (target != null)
+            {
+                MeshFilter filter = target.GetComponent<MeshFilter>();
+                if (filter != null && filter.sharedMesh == cachedMesh) filter.sharedMesh = null;
+                MeshCollider collider = target.GetComponent<MeshCollider>();
+                if (collider != null && collider.sharedMesh == cachedMesh) collider.sharedMesh = null;
+            }
+            DestroyOwnedMesh(cachedMesh);
+        }
+        cachedMesh = null;
+        ownsCachedMesh = false;
+    }
+
+    private static void DestroyOwnedMesh(Mesh mesh)
+    {
+        if (Application.isPlaying) Destroy(mesh);
+        else DestroyImmediate(mesh);
     }
 
     [ContextMenu("Print Last Status")]
@@ -468,7 +579,7 @@ public class MeshPathJsonLoader : MonoBehaviour
         return mesh;
     }
 
-    private bool ApplyMesh(Mesh mesh)
+    private bool ApplyMesh(Mesh mesh, bool forceColliderRefresh)
     {
         if (mesh == null)
             return Fail("Loaded mesh is invalid.");
@@ -483,7 +594,7 @@ public class MeshPathJsonLoader : MonoBehaviour
             if (meshFilter == null)
                 meshFilter = target.AddComponent<MeshFilter>();
 
-            meshFilter.sharedMesh = mesh;
+            if (meshFilter.sharedMesh != mesh) meshFilter.sharedMesh = mesh;
         }
 
         if (ensureMeshRenderer)
@@ -492,7 +603,7 @@ public class MeshPathJsonLoader : MonoBehaviour
             if (meshRenderer == null)
                 meshRenderer = target.AddComponent<MeshRenderer>();
 
-            if (rendererMaterial != null)
+            if (rendererMaterial != null && meshRenderer.sharedMaterial != rendererMaterial)
                 meshRenderer.sharedMaterial = rendererMaterial;
         }
 
@@ -502,11 +613,13 @@ public class MeshPathJsonLoader : MonoBehaviour
             if (meshCollider == null)
                 meshCollider = target.AddComponent<MeshCollider>();
 
-            if (clearColliderBeforeAssign)
-                meshCollider.sharedMesh = null;
-
-            meshCollider.convex = convexCollider;
-            meshCollider.sharedMesh = mesh;
+            if (forceColliderRefresh || meshCollider.sharedMesh != mesh || meshCollider.convex != convexCollider)
+            {
+                if (clearColliderBeforeAssign) meshCollider.sharedMesh = null;
+                if (meshCollider.convex != convexCollider) meshCollider.convex = convexCollider;
+                meshCollider.sharedMesh = mesh;
+                colliderAssignmentCount++;
+            }
         }
 
         return true;
@@ -616,3 +729,4 @@ public class MeshPathJsonLoader : MonoBehaviour
         }
     }
 }
+

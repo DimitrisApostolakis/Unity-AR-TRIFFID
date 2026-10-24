@@ -30,3 +30,9 @@ coordinate_dir="$repo_root/projects/TRIFFID/Assets/Custom Scripts/Coordinate Scr
     "$repo_root/tests/headless/HeadlessMain.cs"
 cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
 "$mono_bin" "${mono_options[@]}" "$build_dir/AR2.Tests.exe"
+
+"${compiler[@]}" -langversion:latest -warnaserror -define:UNITY_EDITOR -out:"$build_dir/AR2.MeshTests.exe" \
+    "$repo_root/projects/TRIFFID/Assets/Custom Scripts/Map Scripts/MeshPathJsonLoader.cs" \
+    "$repo_root/tests/headless/MeshLoaderStubs.cs" \
+    "$repo_root/tests/headless/MeshLoaderRegressionTests.cs"
+"$mono_bin" "${mono_options[@]}" "$build_dir/AR2.MeshTests.exe"

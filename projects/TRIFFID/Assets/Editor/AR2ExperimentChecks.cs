@@ -26,6 +26,7 @@ public static class AR2ExperimentChecks
             Check("out-of-mesh query stays unresolved, display configuration " + configuration,
                 () => CheckSurface(scales[outsideIndex], outsideIndex, 0f, true));
         }
+        Check("surface reactivation reuses its mesh and keeps raycasts available", CheckMeshCache);
         Check("invalid calibration scale is rejected", () =>
         {
             GameObject map = new GameObject("AR2 invalid-scale check");
@@ -94,6 +95,52 @@ public static class AR2ExperimentChecks
         {
             Debug.Log(result);
             if (Application.isBatchMode) EditorApplication.Exit(0);
+        }
+    }
+
+    private static void CheckMeshCache()
+    {
+        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ar2_unity_mesh_" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        GameObject surface = new GameObject("AR2 temporary cached surface");
+        surface.hideFlags = HideFlags.HideAndDontSave;
+        MeshPathJsonLoader loader = null;
+        try
+        {
+            string path = System.IO.Path.Combine(directory, "surface.obj");
+            System.IO.File.WriteAllText(path, "v 0 0 0\nv 0 0 1\nv 1 0 0\nf 1 2 3\n");
+            loader = surface.AddComponent<MeshPathJsonLoader>();
+            System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            typeof(MeshPathJsonLoader).GetField("meshPath", flags).SetValue(loader, path);
+            typeof(MeshPathJsonLoader).GetField("meshLoadMode", flags).SetValue(loader, MeshLoadMode.ExternalObjFile);
+            typeof(MeshPathJsonLoader).GetField("loadOnEnable", flags).SetValue(loader, true);
+            typeof(MeshPathJsonLoader).GetField("loadOnStart", flags).SetValue(loader, true);
+            typeof(MeshPathJsonLoader).GetField("ensureMeshRenderer", flags).SetValue(loader, false);
+            typeof(MeshPathJsonLoader).GetField("logDetails", flags).SetValue(loader, false);
+            // Invoke the callback explicitly because this menu check runs in Edit mode.
+            System.Reflection.MethodInfo enable = typeof(MeshPathJsonLoader).GetMethod("OnEnable", flags);
+            enable.Invoke(loader, null);
+            Mesh original = surface.GetComponent<MeshFilter>().sharedMesh;
+            for (int i = 0; i < 10; i++) enable.Invoke(loader, null);
+            typeof(MeshPathJsonLoader).GetMethod("Start", flags).Invoke(loader, null);
+            Require(loader.MeshLoadCount == 1 && loader.ColliderAssignmentCount == 1,
+                "An unchanged surface was reloaded or its collider was reassigned.");
+            Require(surface.GetComponent<MeshFilter>().sharedMesh == original, "Cached mesh identity changed.");
+            Physics.SyncTransforms();
+            Vector3 hit;
+            Require(GeographicSurfaceQuery.TryHit(surface.GetComponent<MeshCollider>(),
+                new Vector3(0.2f, 0.5f, 0.2f), Vector3.up, 1f, 3f, ~0, out hit) && Mathf.Abs(hit.y) < 0.001f,
+                "Cached collider is no longer available for surface queries.");
+            loader.LoadAndApplyMesh();
+            Require(loader.MeshLoadCount == 2 && loader.ColliderAssignmentCount == 2, "Explicit reload did not refresh the source.");
+            if (!Application.isPlaying) Require(original == null, "Explicit reload retained the replaced runtime mesh.");
+        }
+        finally
+        {
+            if (loader != null)
+                typeof(MeshPathJsonLoader).GetMethod("ReleaseLoadedMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(loader, null);
+            UnityEngine.Object.DestroyImmediate(surface);
+            System.IO.Directory.Delete(directory, true);
         }
     }
 

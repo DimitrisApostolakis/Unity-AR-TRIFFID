@@ -38,7 +38,10 @@ If these dependencies are not in their usual locations, set `AR2_MONO`,
 `AR2_CSC`, and `AR2_NEWTONSOFT_DLL`. A private Mono installation can also use
 `AR2_MONO_CONFIG`, `MONO_PATH`, and `LD_LIBRARY_PATH`.
 
-The verified result is **52 core checks and 12 coordinator checks passed**.
+The verified result is **52 core checks, 12 coordinator checks, and 12 mesh
+loader checks passed**. The mesh checks compile the production loader with
+engine test doubles and exercise cache reuse, invalidation, explicit reload,
+collider bindings, and runtime/imported-mesh ownership.
 The runner compiles the production data models, outbox, polygon validator,
 atomic writer, payload parser, and synchronization coordinator with compiler
 warnings treated as errors. Coordinator checks use simulated scheduling,
@@ -93,7 +96,7 @@ cause of a scene hitch.
 2. Wait for scripts to compile. Resolve any compiler errors before proceeding.
 3. Outside Play mode, select **AR2 > Experiments > Run Regression Checks**.
 4. Inspect the Console. Expected results are 52 passing core checks and
-   **22 passing Unity checks**, with no failing checks.
+   **23 passing Unity checks**, with no failing checks.
 
 The Unity checks create and remove temporary objects. They check signed
 offsets of -2, 0, and +2 metres, out-of-mesh searches, map translation and
@@ -101,6 +104,54 @@ rotation, display scales of 0.01 and 3, mirrored scale, and a nonuniformly
 scaled hierarchy. They also check rejection of invalid calibration scale and
 the unresolved-elevation marker colour. They have not been run in the remote
 development environment because the Unity editor is unavailable there.
+
+The additional mesh-cache check loads a temporary OBJ, repeatedly invokes the
+loader's enable path, verifies mesh identity and collider assignment counts,
+performs a native surface raycast, and checks explicit reload and cleanup.
+Run the updated menu check locally after pulling the cache optimization.
+
+## Mesh reload pause identified in the capture
+
+`ProfilerCaptures/TRIFFID-AR_2026-10-25_01-50-04.data` contains 402 decoded
+frames. Its slowest capture-relative frame is 166 at 1,575.983 ms. Ten non-overlapping
+`MeshPathJsonLoader.OnEnable` samples account for 1,515.759 ms of that frame.
+Their call paths descend from `GeoJsonSyncCoordinator.Synchronize` through
+`GameObject.Activate`. The render thread waits for a signal for 1,534.438 ms
+in the same frame. Frame 167 contains another 143.714 ms mesh enable/load in
+the separate `LatestMqttLoop` path.
+
+The save preparation in frame 89 totals approximately 1.265 ms across the
+instrumented stages. The completion log in frame 91 takes 0.286 ms. These
+samples identify repeated collider-mesh loading as the dominant captured
+pause, rather than the measured JSON preparation or completion log.
+
+`JsonSpawner.PrepareSurfaceForSnap` temporarily activates the configured
+surface for queries. Before the fix, `MeshPathJsonLoader.OnEnable` loaded and
+applied the mesh on every activation. Annotation respawning triggered this
+repeatedly. The loader now caches its mesh, checks source metadata (and asset
+dependency hashes in the Editor), and avoids reassigning an unchanged
+collider. The existing explicit **Load And Apply Mesh** action forces a reload.
+Externally loaded meshes are owned and released by the loader; imported
+Unity mesh assets are not destroyed by it.
+
+The optimization is confined to the mesh-loading module. Surface queries
+still activate/synchronize the collider as before, and synchronization can
+still refresh annotations. Incremental annotation updates remain a separate
+optimization opportunity; this change targets the measured bottleneck.
+
+After pulling, watch **Runtime Mesh Diagnostics** on `MeshPathJsonLoader`:
+**Mesh Load Count** and **Collider Assignment Count** should remain stable
+when unchanged geometry is temporarily enabled for repeated height queries.
+**Mesh Cache Hit Count** can increase. A source change or explicit reload
+should increase the load count. Repeat the actual-scene capture to measure
+the resulting frame-time improvement.
+
+The binary was decoded with Unity Japan's ProfilerReader library, carrying
+its marker dictionary across frames. Timing samples and call paths decoded
+through the end of the capture. That library reported unsupported memory and
+render-stat counters for this Unity version; those counter values were not
+used to infer the cause. Native capture SHA-256:
+`a03afa47b3f3cb09cb80444865d6f1ee505c07727c6d17fddeda6e85fa92168d`.
 
 ## Application and server checks to run locally
 
