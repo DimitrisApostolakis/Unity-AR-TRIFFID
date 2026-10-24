@@ -761,10 +761,6 @@ public class JsonSpawner : MonoBehaviour
             lastSavedVersion = Math.Max(lastSavedVersion, saveVersion);
             autoSaveTimer = 0f;
             Debug.Log($"[JsonSpawner] Saved to: {saveFilePath} (lastModified: {currentRootData.lastModified})");
-
-        #if UNITY_EDITOR
-                    UnityEditor.AssetDatabase.Refresh();
-        #endif
         }
         catch (Exception ex)
         {
