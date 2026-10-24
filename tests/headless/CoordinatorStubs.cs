@@ -55,7 +55,8 @@ public sealed class GeoJsonApiManager
 {
     public sealed class ObserverSyncStatus { public int fe_updated=1; public int mobile_updated; }
     public List<Feature> server=new List<Feature>();
-    public bool offline,holdWrites,holdFetch,loseNextCreateReply;
+    public bool offline,holdWrites,holdFetch,loseNextCreateReply,malformedFetch;
+    public ObserverSyncStatus status=new ObserverSyncStatus();
     public int createCount,updateCount,deleteCount,fetchCount;
     public bool failUpdates;
     private Action heldWrite;
@@ -65,7 +66,7 @@ public sealed class GeoJsonApiManager
     public void FetchAllFeatures(Action<bool,string,Root> callback)
     {
         fetchCount++;
-        Root snapshot=new Root { features=server.Select(GeoJsonOutbox.Clone).ToList() };
+        Root snapshot=new Root { features=malformedFetch?null:server.Select(GeoJsonOutbox.Clone).ToList() };
         Action deliver=()=>callback(!offline,offline?"Offline":"OK",offline?null:snapshot);
         if(holdFetch) heldFetch=deliver; else deliver();
     }
@@ -98,5 +99,5 @@ public sealed class GeoJsonApiManager
     public void FetchLatestMqttStatus(Action<bool,string,MqttLatestResponse> callback) { callback(false,"No telemetry fixture",null); }
     public void PatchCurrentStatusFlag(Action<bool,string,object> callback) { callback(true,"OK",null); }
     public void PatchCurrentStatusField(string field,int value,Action<bool,string,ObserverSyncStatus> callback) { callback(true,"OK",new ObserverSyncStatus()); }
-    public void GetCurrentStatus(Action<bool,string,ObserverSyncStatus> callback) { callback(true,"OK",new ObserverSyncStatus()); }
+    public void GetCurrentStatus(Action<bool,string,ObserverSyncStatus> callback) { callback(!offline,offline?"Offline":"OK",offline?null:status); }
 }

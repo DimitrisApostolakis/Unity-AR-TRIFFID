@@ -38,7 +38,7 @@ If these dependencies are not in their usual locations, set `AR2_MONO`,
 `AR2_CSC`, and `AR2_NEWTONSOFT_DLL`. A private Mono installation can also use
 `AR2_MONO_CONFIG`, `MONO_PATH`, and `LD_LIBRARY_PATH`.
 
-The verified result is **52 core checks, 12 coordinator checks, and 12 mesh
+The verified result is **57 core checks, 18 coordinator checks, and 12 mesh
 loader checks passed**. The mesh checks compile the production loader with
 engine test doubles and exercise cache reuse, invalidation, explicit reload,
 collider bindings, and runtime/imported-mesh ownership.
@@ -47,6 +47,30 @@ atomic writer, payload parser, and synchronization coordinator with compiler
 warnings treated as errors. Coordinator checks use simulated scheduling,
 transport, and local-file ownership. They do not execute Unity physics,
 the complete application, or a real server.
+
+## Server authority and offline backup
+
+The server is authoritative for features already synchronized with it. A
+successful complete server snapshot removes deleted features from the local
+file and the map, including their pending edits and any conflicts retained by
+the former policy. When both clients changed a feature, the observed server
+version wins. A local edit can still upload when the server retains the edit's
+original baseline. A legacy snapshot without synchronization metadata is a
+backup to reconcile with the server, not a source for recreating missing records.
+
+Connection failures, timeouts, and invalid collections retain the local backup.
+After a failed fetch, the coordinator retries a full comparison at the next
+remote polling deadline even if observer-status flags are zero. Local annotation
+creates that have never reached the server stay queued for upload. Creates
+whose outcome or server identity is uncertain retain their reconciliation
+state so a lost response does not cause duplicate uploads.
+
+The Unity context menu **Sync/Refresh From Server** now immediately logs its
+request and warns if the component is disabled. With **Verbose Logs** enabled,
+a successful comparison logs server/local feature counts, removed features,
+and remaining pending operations. A failed fetch reports its error and that
+the local backup was retained. Finish any active marker manipulation and local
+save before expecting the comparison to run.
 
 ## Repeated JSON work and scene pauses
 
@@ -95,7 +119,7 @@ cause of a scene hitch.
 1. Open `projects/TRIFFID` in Unity **6000.3.7f1** on `experiments`.
 2. Wait for scripts to compile. Resolve any compiler errors before proceeding.
 3. Outside Play mode, select **AR2 > Experiments > Run Regression Checks**.
-4. Inspect the Console. Expected results are 52 passing core checks and
+4. Inspect the Console. Expected results are 57 passing core checks and
    **23 passing Unity checks**, with no failing checks.
 
 The Unity checks create and remove temporary objects. They check signed
@@ -166,20 +190,25 @@ Inspector settings, server version, feature IDs, and Console output.
 | Disable the surface collider after obtaining a height and then move the marker | Height provenance records a retained or altitude-delta estimate rather than a new mesh measurement. |
 | Draw a triangle in either direction | Both save with counterclockwise exterior coordinates and matching vertex heights. |
 | Draw a bow tie or collinear polygon | Save reports the error and leaves the drawing available for correction or cancellation. |
-| Create and move features offline, stop the app, restart, and reconnect | Pending edits remain on disk and the final content reaches the server. |
-| Delete a synchronized feature offline, restart, and reconnect | The hidden deletion record survives and the corresponding server feature is deleted. |
+| Create and move features offline, stop the app, restart, and reconnect | Pending edits remain on disk. New creates upload, and edits upload if their server baseline has not changed. |
+| Delete a synchronized feature offline, restart, and reconnect | The hidden deletion record survives. It deletes an unchanged server feature or is cancelled if the server independently changed that feature. |
 | Make a second move while the first update is waiting for its reply | The first acknowledgement does not discard the second move. |
 | Exhaust retries for one feature, then introduce an unrelated robot feature | The failed edit remains visible and the unrelated feature can arrive. |
-| Edit one feature both locally and remotely before reconnecting | The conflict remains pending until explicitly resolved. Other features continue refreshing. |
+| Edit one feature both locally and remotely before reconnecting | The server version replaces the pending local version automatically. Other features continue refreshing. |
+| Delete every server feature while AR has pending edits or old deletion conflicts | The next successful full fetch clears those features and their pending edits from disk and the map, without re-uploading them. |
+| Disconnect AR, delete server features, restart AR offline, then reconnect | The backup remains visible offline. Reconnection applies the deletions, and a subsequent restart does not restore them. |
+| Return an invalid or incomplete response instead of a valid empty FeatureCollection | The local backup and visible map remain intact. |
+| Inspect a negative mesh height in the information panel | It displays a signed number such as `-0.40 m`, without a below-surface suffix. |
 
-For manual conflict resolution, select the object with
+Server edits and deletions do not require manual conflict resolution. For
+unresolved create identities or duplicate client IDs, select the object with
 `GeoJsonSyncCoordinator`, enter the local feature ID in **Resolution Feature
 Id**, and use its component context menu:
 
 - **Sync/Resolve Selected Feature - Keep Local** retains the local content and
   queues it against the last observed remote version.
 - **Sync/Resolve Selected Feature - Accept Server** adopts the observed server
-  content, including a confirmed remote deletion.
+  content for that unresolved identity.
 - **Sync/Restore Pending Deletion** restores the retained local content.
 - **Sync/Retry Pending Edits** retries eligible failed work.
 

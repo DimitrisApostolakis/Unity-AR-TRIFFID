@@ -132,13 +132,81 @@ public static class CoordinatorRegressionTests
                 Check(f.api.createCount==0 && !f.Load().syncState.pending[0].mayHaveReachedServer);
             }
         });
-        Test("coordinator preserves conflicting legacy data and makes no blind write", () =>
+        Test("coordinator replaces a legacy backup with the server version without a blind write", () =>
         {
             Root root=new Root { features=new List<Feature> { Point("a",2) } };
             using(Fixture f=new Fixture(root,Point("a",3)))
             {
-                f.worker.RefreshFromServer(); f.Until(()=>f.Load().syncState!=null && f.Load().syncState.pending.Any(p=>p.status=="conflict"));
-                Equal(X(f.Load().features[0]),2); Check(f.api.updateCount==0 && f.api.createCount==0);
+                f.worker.RefreshFromServer(); f.Until(()=>f.Load().syncState!=null && X(f.Load().features[0])==3);
+                Check(f.Load().syncState.pending.Count==0 && f.spawner.respawns==1);
+                Check(f.api.updateCount==0 && f.api.createCount==0);
+            }
+        });
+        Test("offline backup survives and confirmed server deletions clear it after reconnection", () =>
+        {
+            Root root=Empty(); GeoJsonOutbox.MergeRemote(root,new Root { features=new List<Feature> { Point("road",1),Point("safe",2),Point("citizen",3) } });
+            ((JArray)root.features[0].geometry.coordinates)[0]=4d; ((JArray)root.features[1].geometry.coordinates)[0]=5d;
+            GeoJsonOutbox.CaptureChanges(root,DateTime.UtcNow); root.syncState.pending[0].status="conflict";
+            using(Fixture f=new Fixture(root))
+            {
+                f.api.offline=true; f.worker.RefreshFromServer(); f.Steps(30);
+                Check(f.Load().features.Count==3 && f.spawner.respawns==0 && f.api.updateCount==0);
+                f.api.offline=false; f.worker.RefreshFromServer();
+                f.Until(()=>f.Load().features.Count==0); f.Steps(30);
+                Check(f.Load().syncState.pending.Count==0 && f.spawner.respawns==1 && f.api.updateCount==0 && f.api.createCount==0);
+                f.RestartWorker(); f.worker.RefreshFromServer(); f.Steps(30);
+                Check(f.Load().features.Count==0 && f.api.updateCount==0 && f.api.createCount==0);
+            }
+        });
+        Test("a failed refresh forces a server comparison on reconnection even when status flags are zero", () =>
+        {
+            using(Fixture f=new Fixture(Clean(Point("a",1))))
+            {
+                f.api.offline=true; f.api.status.fe_updated=0; f.worker.RefreshFromServer(); f.Steps(15);
+                Check(f.Load().features.Count==1);
+                f.api.offline=false; Set(f.worker,"nextRemoteCheck",DateTime.MinValue);
+                f.Until(()=>f.Load().features.Count==0);
+                Check(f.api.fetchCount==2 && f.spawner.respawns==1);
+            }
+        });
+        Test("a malformed fetch retains the offline backup and never clears the scene", () =>
+        {
+            using(Fixture f=new Fixture(Clean(Point("a",1))))
+            {
+                f.api.malformedFetch=true; f.worker.RefreshFromServer(); f.Steps(20);
+                Check(f.Load().features.Count==1 && f.spawner.respawns==0 && f.worker.LocalSnapshotWriteCount==0);
+                Check(f.worker.LastStatus.Contains("Local backup retained"));
+            }
+        });
+        Test("server deletions cannot clear the scene until the new snapshot is durably committed", () =>
+        {
+            using(Fixture f=new Fixture(Clean(Point("a",1))))
+            {
+                f.spawner.allowCommit=false; f.worker.RefreshFromServer(); f.Steps(20);
+                Check(f.Load().features.Count==1 && f.spawner.respawns==0);
+                f.spawner.allowCommit=true; Set(f.worker,"nextRemoteCheck",DateTime.MinValue);
+                f.Until(()=>f.Load().features.Count==0);
+                Check(f.spawner.respawns==1 && f.Load().syncState.pending.Count==0);
+            }
+        });
+        Test("offline edits upload when the server still has their original baseline", () =>
+        {
+            Feature original=Point("a",1);
+            using(Fixture f=new Fixture(Clean(original),original))
+            {
+                f.api.offline=true; f.Edit("a",2); f.Steps(20); Check(f.Load().syncState.pending.Count==1);
+                f.api.offline=false; f.Until(()=>f.api.updateCount==1 && f.Load().syncState.pending.Count==0);
+                Equal(X(f.api.server[0]),2);
+            }
+        });
+        Test("an existing conflict with a live server feature resolves to the server automatically", () =>
+        {
+            Root root=Clean(Point("a",1)); ((JArray)root.features[0].geometry.coordinates)[0]=2d;
+            GeoJsonOutbox.CaptureChanges(root,DateTime.UtcNow); root.syncState.pending[0].status="conflict";
+            using(Fixture f=new Fixture(root,Point("a",3)))
+            {
+                f.worker.RefreshFromServer(); f.Until(()=>X(f.Load().features[0])==3);
+                Check(f.Load().syncState.pending.Count==0 && f.api.updateCount==0 && f.api.createCount==0);
             }
         });
         Console.WriteLine("COORDINATOR RESULT: "+passed+" passed, "+failed+" failed");

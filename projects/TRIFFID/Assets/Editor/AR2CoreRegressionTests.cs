@@ -124,29 +124,32 @@ public static class AR2CoreRegressionTests
             GeoJsonOutbox.Fail(root, sent, "Old failure", 0, 1, 20, Now);
             Check(root.syncState.pending[0].status == "pending"); Equal(X(root.syncState.pending[0].payload), 3d);
         });
-        Test("observed concurrent local and remote edits become an explicit conflict", () =>
+        Test("a competing server edit replaces a pending local edit", () =>
         {
             Root root = Clean(Point("a", 1)); Change(root, "a", 2);
             GeoJsonOutbox.MergeRemote(root, Collection(Point("a", 3), Point("robot", 5)));
-            Check(root.syncState.pending[0].status == "conflict"); Equal(X(root.features.Find(f => f.id == "a")), 2d);
-            Check(root.features.Any(f => f.id == "robot"));
+            Check(root.syncState.pending.Count == 0); Equal(X(root.features.Find(f => f.id == "a")), 3d);
+            Check(root.features.Any(f => f.id == "robot") && !GeoJsonOutbox.CaptureChanges(root, Now));
         });
         Test("accepting the server resolves a conflict with the chosen content", () =>
         {
-            Root root = Clean(Point("a", 1)); Change(root, "a", 2); GeoJsonOutbox.MergeRemote(root, Collection(Point("a", 3)));
+            Root root = Empty(); root.features.Add(Point("a", 2)); GeoJsonOutbox.CaptureChanges(root, Now);
+            GeoJsonOutbox.MergeRemote(root, Collection(Point("a", 3)));
             Check(GeoJsonOutbox.Resolve(root, "a", false)); Equal(X(root.features[0]), 3d); Check(root.syncState.pending.Count == 0);
         });
         Test("keeping local resolves against the observed remote baseline", () =>
         {
-            Root root = Clean(Point("a", 1)); Change(root, "a", 2); GeoJsonOutbox.MergeRemote(root, Collection(Point("a", 3)));
+            Root root = Empty(); root.features.Add(Point("a", 2)); GeoJsonOutbox.CaptureChanges(root, Now);
+            GeoJsonOutbox.MergeRemote(root, Collection(Point("a", 3)));
             long previous = root.syncState.pending[0].revision; GeoJsonOutbox.Resolve(root, "a", true);
             Check(root.syncState.pending[0].revision > previous && GeoJsonOutbox.Next(root, Now).kind == "update");
             GeoJsonOutbox.MergeRemote(root, Collection(Point("a", 3))); Check(root.syncState.pending[0].status == "pending");
         });
-        Test("remote deletion of a locally edited feature requires resolution", () =>
+        Test("remote deletion cancels a pending local edit and removes the feature", () =>
         {
             Root root = Clean(Point("a", 1)); Change(root, "a", 2); GeoJsonOutbox.MergeRemote(root, Collection());
-            Check(root.features.Count == 1 && root.syncState.pending[0].status == "conflict");
+            Check(root.features.Count == 0 && root.syncState.pending.Count == 0 && root.syncState.remoteIds.Count == 0);
+            Check(!GeoJsonOutbox.CaptureChanges(root, Now));
         });
         Test("remote deletion of a clean feature is applied", () =>
         { Root root = Clean(Point("a", 1)); GeoJsonOutbox.MergeRemote(root, Collection()); Check(root.features.Count == 0 && root.syncState.pending.Count == 0); });
@@ -154,11 +157,11 @@ public static class AR2CoreRegressionTests
         { Root root = Clean(Point("a", 1)); Delete(root, "a"); GeoJsonOutbox.MergeRemote(root, Collection()); Check(root.syncState.pending.Count == 0); });
         Test("a pending deletion remains recoverable locally", () =>
         { Root root = Clean(Point("a", 1)); Delete(root, "a"); Check(GeoJsonOutbox.RestoreDeletion(root, "a")); Check(root.features.Count == 1); });
-        Test("old local snapshots are reconciled and cannot silently overwrite server content", () =>
+        Test("old local snapshots accept differing server content without uploading the backup", () =>
         {
             Root root = Collection(Point("a", 2)); GeoJsonOutbox.Initialize(root, true);
             GeoJsonOutbox.MergeRemote(root, Collection(Point("a", 3)));
-            Check(root.syncState.pending[0].status == "conflict"); Equal(X(root.features[0]), 2d);
+            Check(root.syncState.pending.Count == 0); Equal(X(root.features[0]), 3d);
         });
         Test("matching legacy snapshot becomes clean", () =>
         {
@@ -171,12 +174,13 @@ public static class AR2CoreRegressionTests
             Feature one = GeoJsonOutbox.NetworkPayload(root, sent), two = GeoJsonOutbox.Clone(one); one.id = "server_1"; two.id = "server_2";
             GeoJsonOutbox.MergeRemote(root, Collection(one, two)); Check(root.syncState.pending[0].status == "conflict");
         });
-        Test("server identity survives conflict resolution and a local rename alias", () =>
+        Test("server identity and the local alias survive a competing server edit", () =>
         {
             Root root = Empty(); root.features.Add(Point("feature_a", 1)); GeoJsonOutbox.CaptureChanges(root, Now); GeoJsonPendingEdit sent = Dispatch(root);
             GeoJsonOutbox.Acknowledge(root, sent, "server_1"); Change(root, "feature_a", 2);
             Feature remote = Point("server_1", 3); GeoJsonOutbox.MergeRemote(root, Collection(remote));
-            GeoJsonOutbox.Resolve(root, "feature_a", true); Check(root.syncState.remoteIds["feature_a"] == "server_1");
+            Check(root.syncState.remoteIds["feature_a"] == "server_1" && root.features[0].id == "feature_a");
+            Check(root.syncState.pending.Count == 0); Equal(X(root.features[0]), 3);
         });
         Test("feature network payload contains no local outbox or deletion records", () =>
         {
@@ -252,12 +256,51 @@ public static class AR2CoreRegressionTests
             GeoJsonOutbox.MergeRemote(root,Collection(Point("a",1)));
             Check(root.syncState.pending[0].status=="pending" && root.syncState.pending[0].kind=="update");
         });
-        Test("accept-server resolution preserves the remote identity mapping", () =>
+        Test("an old conflict accepts the current server version automatically", () =>
         {
             Root root=Empty(); root.features.Add(Point("feature_a",1)); GeoJsonOutbox.CaptureChanges(root,Now);
             GeoJsonPendingEdit sent=Dispatch(root); GeoJsonOutbox.Acknowledge(root,sent,"server_1");
-            Change(root,"feature_a",2); GeoJsonOutbox.MergeRemote(root,Collection(Point("server_1",3)));
-            GeoJsonOutbox.Resolve(root,"feature_a",false); Check(root.syncState.remoteIds["feature_a"]=="server_1");
+            Change(root,"feature_a",2); root.syncState.pending[0].status="conflict";
+            GeoJsonOutbox.MergeRemote(root,Collection(Point("server_1",3)));
+            Check(root.syncState.remoteIds["feature_a"]=="server_1" && root.syncState.pending.Count==0);
+            Equal(X(root.features[0]),3);
+        });
+        Test("server deletion removes old conflicts and failed updates after a restart", () =>
+        {
+            foreach(string status in new[] { "pending", "conflict", "failed", "inflight", "reconcile" })
+            {
+                Root root=Clean(Point("a",1)); Change(root,"a",2); root.syncState.pending[0].status=status;
+                root=Restart(root); GeoJsonOutbox.MergeRemote(root,Collection()); root=Restart(root);
+                Check(root.features.Count==0 && root.syncState.pending.Count==0 && root.syncState.acknowledgedHashes.Count==0);
+                Check(GeoJsonOutbox.Next(root,Now)==null && !GeoJsonOutbox.CaptureChanges(root,Now));
+            }
+        });
+        Test("an empty server removes legacy backup features", () =>
+        {
+            Root root=Collection(Point("a",1)); GeoJsonOutbox.Initialize(root,true);
+            GeoJsonOutbox.MergeRemote(root,Collection()); Check(root.features.Count==0 && root.syncState.pending.Count==0);
+        });
+        Test("server deletion retains a new annotation that has never been uploaded", () =>
+        {
+            Root root=Clean(Point("server_point",1)); root.features.Add(Point("new_annotation",2));
+            GeoJsonOutbox.CaptureChanges(root,Now); GeoJsonOutbox.MergeRemote(root,Collection());
+            Check(root.features.Count==1 && root.features[0].id=="new_annotation");
+            Check(root.syncState.pending.Count==1 && GeoJsonOutbox.Next(root,Now).kind=="create");
+        });
+        Test("a competing server edit supersedes a pending local deletion", () =>
+        {
+            Root root=Clean(Point("a",1)); Delete(root,"a"); GeoJsonOutbox.MergeRemote(root,Collection(Point("a",3)));
+            Check(root.syncState.pending.Count==0); Equal(X(root.features[0]),3);
+        });
+        Test("an invalid remote collection leaves the backup unchanged", () =>
+        {
+            Root root=Clean(Point("a",1)); Change(root,"a",2); string before=JsonConvert.SerializeObject(root);
+            foreach(Root invalid in new[] { new Root(), Collection((Feature)null), Collection(new Feature()), Collection(Point("b",2),Point("b",3)) })
+            {
+                bool threw=false; try { GeoJsonOutbox.MergeRemote(root,invalid); } catch(ArgumentException) { threw=true; }
+                catch(InvalidDataException) { threw=true; } catch(InvalidOperationException) { threw=true; }
+                Check(threw && JsonConvert.SerializeObject(root)==before);
+            }
         });
         Test("unsupported local-state schema fails without discarding the outbox", () =>
         {

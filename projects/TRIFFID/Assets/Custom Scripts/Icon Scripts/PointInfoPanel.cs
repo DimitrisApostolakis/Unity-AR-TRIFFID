@@ -482,7 +482,7 @@ public class PointInfoPanel : MonoBehaviour
         {
             altitudeValueText.text = p.elevationUnresolved ? "Elevation unavailable" :
                 p.hasHeightAboveSurface
-                ? $"{p.heightAboveSurface:F2} m" + (p.heightSource == "mesh" ? (p.heightAboveSurface < 0d ? " (below surface)" : "") : " (estimated)")
+                ? $"{p.heightAboveSurface:F2} m" + (p.heightSource == "mesh" ? "" : " (estimated)")
                 : "Height unavailable";
         }
         if (sourceText != null) sourceText.text = (IsProtectedLatestMqttMarker(p) ? string.Empty : p.source) +

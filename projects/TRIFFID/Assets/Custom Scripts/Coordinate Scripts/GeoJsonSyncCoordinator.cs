@@ -77,7 +77,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
     [SerializeField] private float localChangeGraceSeconds = 1.5f;
 
     [Header("Conflict Policy")]
-    [Tooltip("Uses observer-status flags to avoid fetching when no external update has been reported.")]
+    [Tooltip("Uses observer-status flags to avoid fetching when no external update has been reported. Successful complete snapshots apply server changes and deletions; failed requests retain the local backup.")]
     [SerializeField] private bool fetchOnlyWhenExternalUpdates = true;
     [Tooltip("Allows a remote fetch when the observer-status endpoint cannot be reached.")]
     [SerializeField] private bool fallbackToFetchWhenStatusUnavailable = true;
@@ -105,6 +105,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
     private bool observedReconciliationNeeded;
 
     private bool refreshRequested;
+    private bool remoteSnapshotRequired;
     private bool restorePendingState;
     private DateTime nextRemoteCheck;
     private string saveFileAbsolutePath;
@@ -149,10 +150,16 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
     }
 
     [ContextMenu("Sync/Initial Load From Server")]
-    public void LoadFromServer() { refreshRequested = true; }
+    public void LoadFromServer() { RefreshFromServer(); }
 
     [ContextMenu("Sync/Refresh From Server")]
-    public void RefreshFromServer() { refreshRequested = true; }
+    public void RefreshFromServer()
+    {
+        refreshRequested = true;
+        Debug.Log("[GeoJsonSyncCoordinator] Remote refresh requested.");
+        if (!isActiveAndEnabled)
+            Debug.LogWarning("[GeoJsonSyncCoordinator] Refresh cannot run while the component or its GameObject is disabled.");
+    }
 
     [ContextMenu("Sync/Retry Pending Edits")]
     public void RetryPendingEdits()
@@ -223,9 +230,9 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
             bool reconciliationNeeded = local.syncState.pending.Any(p => p.status == "reconcile");
             bool checkRemote = refreshRequested || candidate != null ||
                 (enableRemotePolling && DateTime.UtcNow >= nextRemoteCheck) ||
-                (reconciliationNeeded && DateTime.UtcNow >= nextRemoteCheck);
+                ((reconciliationNeeded || remoteSnapshotRequired) && DateTime.UtcNow >= nextRemoteCheck);
             if (!checkRemote) { ReportPending(local); continue; }
-            if (candidate == null && !refreshRequested && !reconciliationNeeded)
+            if (candidate == null && !refreshRequested && !reconciliationNeeded && !remoteSnapshotRequired)
             {
                 if ((DateTime.UtcNow - lastLocalChangeUtc).TotalSeconds < Math.Max(0f, localChangeGraceSeconds)) continue;
                 if (fetchOnlyWhenExternalUpdates)
@@ -256,7 +263,8 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
             refreshRequested = false;
             if (!fetch.ok || fetch.root == null)
             {
-                NotifyStatus("Connection unavailable. Local edits remain pending.");
+                remoteSnapshotRequired = true;
+                NotifyStatus("Server refresh failed. Local backup retained. " + fetch.message);
                 // Do not mark an operation as sent when the preliminary GET
                 // could not connect. Offline creates remain safely retryable.
                 yield return new WaitForSecondsRealtime(Mathf.Max(0.75f, retryBaseDelaySeconds));
@@ -266,6 +274,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
             { refreshRequested = true; continue; }
             if (!Read(out local)) continue;
             string originalFeatures = JsonConvert.SerializeObject(local.features);
+            HashSet<string> previousIds = new HashSet<string>(local.features.Where(f => f != null).Select(f => f.id), StringComparer.OrdinalIgnoreCase);
             bool merged = false;
             string mergeError = null;
             try
@@ -274,9 +283,23 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
                 merged = GeoJsonOutbox.MergeRemote(local, fetch.root);
             }
             catch (Exception ex) { mergeError = ex.Message; }
-            if (mergeError != null) { NotifyStatus("Server comparison failed: " + mergeError); continue; }
+            if (mergeError != null)
+            {
+                remoteSnapshotRequired = true;
+                NotifyStatus("Server comparison failed. Local backup retained: " + mergeError);
+                continue;
+            }
             bool contentChanged = originalFeatures != JsonConvert.SerializeObject(local.features);
-            if (merged && !Commit(local, version, contentChanged)) continue;
+            if (merged && !Commit(local, version, contentChanged))
+            { remoteSnapshotRequired = true; continue; }
+            remoteSnapshotRequired = false;
+            if (verboseLogs)
+            {
+                previousIds.ExceptWith(local.features.Where(f => f != null).Select(f => f.id));
+                Debug.Log("[GeoJsonSyncCoordinator] Remote refresh applied: server=" + fetch.root.features.Count +
+                    ", local=" + local.features.Count + ", removed=" + previousIds.Count +
+                    ", pending=" + local.syncState.pending.Count + ". Server changes and deletions take priority.");
+            }
             if (merged && resetArUpdatedAfterRemoteRefresh) yield return NotifyServerOfRemoteRefresh();
             if (contentChanged || IsLocalBusy()) continue;
 
@@ -327,7 +350,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
         if (!localSnapshotObserved || restorePendingState || refreshRequested) return true;
         DateTime now = DateTime.UtcNow;
         if (now >= nextPendingOperationUtc ||
-            ((enableRemotePolling || observedReconciliationNeeded) && now >= nextRemoteCheck)) return true;
+            ((enableRemotePolling || observedReconciliationNeeded || remoteSnapshotRequired) && now >= nextRemoteCheck)) return true;
         if (observedPersistenceVersion != jsonSpawner.LocalPersistenceVersion) return true;
         try
         {

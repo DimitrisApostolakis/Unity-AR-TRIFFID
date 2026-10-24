@@ -50,8 +50,8 @@ public static class GeoJsonOutbox
         }
         root.syncState = new GeoJsonSyncState();
         if (!existingSnapshot) return;
-        // Old files cannot tell us whether an edit was delivered. Reconcile them
-        // with the server instead of silently overwriting or recreating them.
+        // Old files are a local backup until a successful server comparison.
+        // Never upload them blindly or recreate records deleted by the server.
         foreach (Feature feature in root.features.Where(f => f != null && !string.IsNullOrWhiteSpace(f.id)))
         {
             GeoJsonPendingEdit edit = NewEdit(root.syncState, feature.id, "reconcile", feature, Fingerprint(feature));
@@ -289,16 +289,22 @@ public static class GeoJsonOutbox
     {
         Initialize(local, true);
         if (remote == null || remote.features == null) throw new ArgumentException("A complete remote collection is required.");
+        // Reject incomplete collections before changing any local feature. An
+        // empty, valid collection means deletion; an invalid response does not.
+        HashSet<string> remoteIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Feature feature in remote.features)
+        {
+            if (feature == null || string.IsNullOrWhiteSpace(feature.id))
+                throw new InvalidDataException("Remote collection contains a feature without an identifier.");
+            if (!remoteIds.Add(feature.id)) throw new InvalidOperationException("Remote collection has duplicate feature IDs.");
+        }
         GeoJsonSyncState state = local.syncState;
         string before = JsonConvert.SerializeObject(local);
         HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        HashSet<string> remoteIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         Dictionary<string, int> clientCounts = remote.features.Where(f => f != null && f.properties != null && !string.IsNullOrWhiteSpace(f.properties.clientFeatureId))
             .GroupBy(f => f.properties.clientFeatureId, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
         foreach (Feature raw in remote.features)
         {
-            if (raw == null || string.IsNullOrWhiteSpace(raw.id)) continue;
-            if (!remoteIds.Add(raw.id)) throw new InvalidOperationException("Remote collection has duplicate feature IDs.");
             string id = state.remoteIds.FirstOrDefault(kv => string.Equals(kv.Value, raw.id, StringComparison.OrdinalIgnoreCase)).Key;
             string clientId = raw.properties == null ? null : raw.properties.clientFeatureId;
             if (string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(clientId) && Find(local, clientId) != null) id = clientId;
@@ -314,7 +320,15 @@ public static class GeoJsonOutbox
             string remoteHash = Fingerprint(incoming);
             if (pending != null)
             {
-                if (pending.status == "conflict") { pending.remoteConflict = incoming; continue; }
+                if (pending.status == "conflict")
+                {
+                    // Migrate conflicts created by the former keep-local policy.
+                    // Unconfirmed creates still need identity reconciliation.
+                    if (state.remoteIds.ContainsKey(id) || pending.kind == "reconcile")
+                        AcceptRemote(local, incoming, raw.id);
+                    else pending.remoteConflict = incoming;
+                    continue;
+                }
                 bool unknownCreate = !state.remoteIds.ContainsKey(id) && pending.mayHaveReachedServer;
                 if (pending.kind == "reconcile")
                 {
@@ -325,7 +339,7 @@ public static class GeoJsonOutbox
                         state.remoteIds[id] = raw.id; state.acknowledgedHashes[id] = remoteHash;
                         pending.kind = "update"; pending.status = "pending"; pending.notBeforeUtcTicks = 0;
                     }
-                    else Conflict(pending, incoming, "Legacy local and server versions differ. Choose which to keep.");
+                    else AcceptRemote(local, incoming, raw.id);
                     continue;
                 }
                 if (unknownCreate)
@@ -350,32 +364,46 @@ public static class GeoJsonOutbox
                 if (pending.kind != "delete" && Fingerprint(pending.payload) == remoteHash)
                 { state.remoteIds[id] = raw.id; state.acknowledgedHashes[id] = remoteHash; state.pending.Remove(pending); }
                 else if (pending.baseHash != remoteHash)
-                    Conflict(pending, incoming, "Both local and server versions changed.");
-                continue; // Dirty features and deletion tombstones remain local.
+                    AcceptRemote(local, incoming, raw.id);
+                // A local edit is sent only while the server still has its
+                // original baseline. A competing server change wins.
+                continue;
             }
-            state.remoteIds[id] = raw.id;
-            state.acknowledgedHashes[id] = remoteHash;
-            local.features.RemoveAll(f => f != null && string.Equals(f.id, id, StringComparison.OrdinalIgnoreCase));
-            local.features.Add(incoming);
+            AcceptRemote(local, incoming, raw.id);
         }
         foreach (GeoJsonPendingEdit pending in state.pending.ToArray())
         {
             if (seen.Contains(pending.featureId)) continue;
-            if (pending.kind == "delete" && state.remoteIds.ContainsKey(pending.featureId))
-            { Acknowledge(local, pending, null); continue; }
+            if (state.remoteIds.ContainsKey(pending.featureId) || state.acknowledgedHashes.ContainsKey(pending.featureId) ||
+                pending.kind == "reconcile")
+            { RemoveServerFeature(local, pending.featureId); continue; }
             if (pending.status == "conflict") { pending.remoteConflict = null; pending.remoteConflictId = null; continue; }
-            if (pending.kind == "reconcile" || state.remoteIds.ContainsKey(pending.featureId))
-                Conflict(pending, null, "Feature is absent from the server. Choose whether to keep the local version.");
-            // An ambiguous create stays in reconcile state. Absence from one GET
-            // is not proof that a timed-out PUT was never committed.
+            // New local annotations remain queued. An ambiguous create stays in
+            // reconcile state until its server identity can be confirmed.
         }
-        foreach (string id in state.acknowledgedHashes.Keys.ToArray())
+        foreach (string id in state.acknowledgedHashes.Keys.Union(state.remoteIds.Keys, StringComparer.OrdinalIgnoreCase).ToArray())
         {
-            if (seen.Contains(id) || Find(local, id) != null) continue;
-            local.features.RemoveAll(f => f != null && string.Equals(f.id, id, StringComparison.OrdinalIgnoreCase));
-            state.acknowledgedHashes.Remove(id); state.remoteIds.Remove(id);
+            if (!seen.Contains(id)) RemoveServerFeature(local, id);
         }
         return before != JsonConvert.SerializeObject(local);
+    }
+
+    private static void AcceptRemote(Root local, Feature incoming, string remoteId)
+    {
+        string id = incoming.id;
+        local.features.RemoveAll(f => f != null && string.Equals(f.id, id, StringComparison.OrdinalIgnoreCase));
+        local.features.Add(incoming);
+        local.syncState.remoteIds[id] = remoteId;
+        local.syncState.acknowledgedHashes[id] = Fingerprint(incoming);
+        local.syncState.pending.RemoveAll(p => string.Equals(p.featureId, id, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void RemoveServerFeature(Root local, string id)
+    {
+        local.features.RemoveAll(f => f != null && string.Equals(f.id, id, StringComparison.OrdinalIgnoreCase));
+        local.syncState.pending.RemoveAll(p => string.Equals(p.featureId, id, StringComparison.OrdinalIgnoreCase));
+        local.syncState.acknowledgedHashes.Remove(id);
+        local.syncState.remoteIds.Remove(id);
     }
 
     private static void Conflict(GeoJsonPendingEdit edit, Feature remote, string reason)
