@@ -248,7 +248,7 @@ cause of a scene hitch.
 
 1. Open `projects/TRIFFID` in Unity **6000.3.7f1** on `experiments`.
 2. Wait for scripts to compile. Resolve any compiler errors before proceeding.
-3. Outside Play mode, select **AR2 > Experiments > Run Regression Checks**.
+3. Outside Play mode, select **Tools > Experiments > Run Regression Checks**.
 4. Inspect the Console. Expected results are 63 passing core checks and
    **48 passing Unity checks**, with no failing checks.
 

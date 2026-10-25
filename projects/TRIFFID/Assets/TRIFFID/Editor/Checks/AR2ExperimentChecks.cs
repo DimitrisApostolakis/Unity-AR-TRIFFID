@@ -6,7 +6,7 @@ public static class AR2ExperimentChecks
 {
     private static int physicsPassed, physicsFailed;
 
-    [MenuItem("AR2/Experiments/Run Regression Checks")]
+    [MenuItem("Tools/Experiments/Run Regression Checks")]
     public static void Run()
     {
         int core = AR2CoreRegressionTests.Run();
