@@ -39,7 +39,7 @@ If these dependencies are not in their usual locations, set `AR2_MONO`,
 `AR2_MONO_CONFIG`, `MONO_PATH`, and `LD_LIBRARY_PATH`.
 
 The verified result is **63 core checks, 22 coordinator checks, 12 mesh
-loader checks, and 20 interaction checks passed**. The mesh checks compile the production loader with
+loader checks, 20 interaction checks, and 6 Inspector checks passed**. The mesh checks compile the production loader with
 engine test doubles and exercise cache reuse, invalidation, explicit reload,
 collider bindings, and runtime/imported-mesh ownership.
 The runner compiles the production data models, outbox, polygon validator,
@@ -146,13 +146,13 @@ new POI while the server is closed), keep or restart Unity in Play mode with
 the server still closed, then run from the repository root:
 
 ```bat
-python scripts/test_ar2_offline_sync.py --resume
+python LocalScripts/test_ar2_offline_sync.py --resume
 ```
 
 To perform a fresh guided test after pending edits have synchronized:
 
 ```bat
-python scripts/test_ar2_offline_sync.py
+python LocalScripts/test_ar2_offline_sync.py
 ```
 
 The guided mode seeds one identifiable animal, waits until Unity has fetched
@@ -188,7 +188,7 @@ The eight Python checker tests passed, including actual local HTTP CRUD,
 request auditing and server restart. Run them with:
 
 ```bash
-python -m unittest discover -s tests/python -p 'test_ar2_offline_sync.py' -v
+python -m unittest discover -s LocalScripts/Tests -p 'test_ar2_offline_sync.py' -v
 ```
 
 Those checks validate the runner, not a live Unity session. The end-to-end
@@ -378,3 +378,9 @@ The coordinator code defaults remain 30 seconds for general remote polling
 and 4 seconds for the latest MQTT check. Existing scene Inspector values may
 override these defaults. Neither these intervals nor the regression checks
 are measured end-to-end latency or geographic-accuracy results.
+
+The Inspector checks compile the grouped editors and their component registrations
+against Editor doubles. They exercise inherited headers, field coverage, foldout
+state, search, dedicated path exclusions and read-only diagnostics. They do not
+replace a native Unity import and visual Inspector check. See
+[code organization](CODE_STRUCTURE.md) for the new source layout.

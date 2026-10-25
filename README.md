@@ -42,26 +42,23 @@ The current demo version focuses on PC VR usage with Meta Quest 3 through Quest 
 ## Repository Structure
 
 ```text
-.
-├── README.md
-├── LICENSE.md
-├── .gitignore
-└── projects/
-    └── TRIFFID/
-        ├── Assets/
-        │   ├── Scenes/
-        │   │   ├── Demo scenes
-        │   │   └── Gaussian Splatting demo assets
-        │   ├── Custom Scripts/
-        │   ├── Prefabs/
-        │   ├── XR/
-        │   └── ...
-        ├── LocalScripts/
-        │   ├── local_geojson_server.py
-        │   └── local_features.json
-        ├── Packages/
-        └── ProjectSettings/
+LocalScripts/                     Python server, outage test and Python checks
+scripts/                          Shell test runner
+tests/headless/                   C# regression harnesses
+package/                          Gaussian renderer package and shared path resolver
+projects/TRIFFID/
+    Assets/TRIFFID/
+        Runtime/                  Geospatial, Mapping, Features, Interaction, UI
+        Editor/                   Grouped Inspectors and Unity regression checks
+    Assets/Custom Scripts/Icons/  Existing icon/prefab assets (paths preserved)
+    LocalScripts/                 Existing server database (data path preserved)
+    Coordinates/                  Existing runtime GeoJSON save location
+    Packages/
+    ProjectSettings/
 ```
+
+The [code and Inspector guide](docs/CODE_STRUCTURE.md) explains module ownership,
+component relationships, and how to add a feature without duplicating loading or sync logic.
 
 ## Setup
 
@@ -91,7 +88,7 @@ projects/TRIFFID/ProjectSettings/ProjectVersion.txt
 From the repository root, run:
 
 ```bash
-python ./projects/TRIFFID/LocalScripts/local_geojson_server.py --host 127.0.0.1 --port 8080 --db ./projects/TRIFFID/LocalScripts/local_features.json --auto-move-after 5 --move-interval 1 --move-step-lat 0.00001 --move-step-lon 0.00002
+python ./LocalScripts/local_geojson_server.py --host 127.0.0.1 --port 8080 --db ./projects/TRIFFID/LocalScripts/local_features.json --auto-move-after 5 --move-interval 1 --move-step-lat 0.00001 --move-step-lon 0.00002
 ```
 
 The local server exposes the following demo endpoints:
@@ -113,7 +110,7 @@ To verify a deletion and creation already saved in Unity during an outage,
 stop the separate local server, keep Unity in Play mode using localhost, and run:
 
 ```bash
-python scripts/test_ar2_offline_sync.py --resume
+python LocalScripts/test_ar2_offline_sync.py --resume
 ```
 
 Omit `--resume` for a fresh guided outage/reconnection test. The script backs
