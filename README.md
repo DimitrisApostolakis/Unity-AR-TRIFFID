@@ -42,7 +42,7 @@ The current demo version focuses on PC VR usage with Meta Quest 3 through Quest 
 ## Repository Structure
 
 ```text
-LocalScripts/                     Python server, outage test and Python checks
+LocalScripts/                     Python server, database, outage test and Python checks
 scripts/                          Shell test runner
 tests/headless/                   C# regression harnesses
 package/                          Gaussian renderer package and shared path resolver
@@ -51,7 +51,6 @@ projects/TRIFFID/
         Runtime/                  Geospatial, Mapping, Features, Interaction, UI
         Editor/                   Grouped Inspectors and Unity regression checks
     Assets/Custom Scripts/Icons/  Existing icon/prefab assets (paths preserved)
-    LocalScripts/                 Existing server database (data path preserved)
     Coordinates/                  Existing runtime GeoJSON save location
     Packages/
     ProjectSettings/
@@ -88,7 +87,7 @@ projects/TRIFFID/ProjectSettings/ProjectVersion.txt
 From the repository root, run:
 
 ```bash
-python ./LocalScripts/local_geojson_server.py --host 127.0.0.1 --port 8080 --db ./projects/TRIFFID/LocalScripts/local_features.json --auto-move-after 5 --move-interval 1 --move-step-lat 0.00001 --move-step-lon 0.00002
+python ./LocalScripts/local_geojson_server.py --host 127.0.0.1 --port 8080 --db ./LocalScripts/local_features.json --auto-move-after 5 --move-interval 1 --move-step-lat 0.00001 --move-step-lon 0.00002
 ```
 
 The local server exposes the following demo endpoints:

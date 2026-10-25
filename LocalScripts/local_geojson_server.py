@@ -710,9 +710,8 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", default=8080, type=int, help="Bind port")
     parser.add_argument("--db",
-                        default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                             "projects", "TRIFFID", "LocalScripts", "local_features.json"),
-                        help="Path to JSON db file (defaults to the existing Unity project database)")
+                        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_features.json"),
+                        help="Path to JSON db file (defaults to LocalScripts/local_features.json)")
     parser.add_argument("--audit-log", help="Optional JSONL request log for the offline sync test")
     parser.add_argument("--lat", type=float, default=37.9603098916767, help="Initial MQTT latitude")
     parser.add_argument("--lon", type=float, default=23.708289295677133, help="Initial MQTT longitude")

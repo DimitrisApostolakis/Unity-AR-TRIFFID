@@ -1,10 +1,10 @@
 1) Startup
 
 cd D:/UnityProjects/Unity-AR-TRIFFID
-python ./LocalScripts/local_geojson_server.py --host 127.0.0.1 --port 8080 --db ./projects/TRIFFID/LocalScripts/local_features.json
+python ./LocalScripts/local_geojson_server.py --host 127.0.0.1 --port 8080 --db ./LocalScripts/local_features.json
 
 Optional auto-move startup:
-python ./LocalScripts/local_geojson_server.py --host 127.0.0.1 --port 8080 --db ./projects/TRIFFID/LocalScripts/local_features.json --auto-move-after 5 --move-interval 1 --move-step-lat 0.00001 --move-step-lon 0.00002
+python ./LocalScripts/local_geojson_server.py --host 127.0.0.1 --port 8080 --db ./LocalScripts/local_features.json --auto-move-after 5 --move-interval 1 --move-step-lat 0.00001 --move-step-lon 0.00002
 
 2) Production endpoints
 

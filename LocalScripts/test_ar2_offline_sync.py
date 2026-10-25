@@ -224,7 +224,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resume", action="store_true", help="Verify a pending offline delete+create already made in Unity")
     parser.add_argument("--snapshot", type=Path, default=PROJECT / "Coordinates" / "GeoJSON_updated.json")
-    parser.add_argument("--db", type=Path, default=PROJECT / "LocalScripts" / "local_features.json")
+    parser.add_argument("--db", type=Path, default=REPO / "LocalScripts" / "local_features.json")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("--settle-seconds", type=float, default=3)

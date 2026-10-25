@@ -100,14 +100,21 @@ python -m unittest discover -s LocalScripts/Tests -p "test_*.py" -v
 
 All repository Python sources are under `LocalScripts`, including their tests in
 `LocalScripts/Tests`. The shell runner stays at `scripts/test_ar2_core.sh`.
-The local server defaults to the existing database at
-`projects/TRIFFID/LocalScripts/local_features.json`, independently of the working
+The local server defaults to the database at
+`LocalScripts/local_features.json`, independently of the working
 directory. Explicit `--db` paths are still supported. The outage test launches
 the relocated server and uses that same database.
 
-Database contents, GeoJSON save locations, and existing icon/prefab paths stay in
-place. The previous Python entry-point paths have moved; use the commands above
-and update any external launch shortcuts.
+The database now lives beside the Python server in the repository-root
+`LocalScripts` folder. Database contents, Unity GeoJSON save locations, and existing
+icon/prefab paths are preserved. Update any external launch shortcuts that still
+pass the previous `projects/TRIFFID/LocalScripts/local_features.json` path.
+
+If your tracked database has local changes, stop the server before pulling the
+move. Back up the old file outside its tracked path, restore only that old tracked
+path, pull, and copy your backup into `LocalScripts/local_features.json`. Keep the
+backup until you have checked the server data. Do not restore Unity's separate
+GeoJSON save or pending-edit state as part of this database move.
 
 ## Adding functionality
 
