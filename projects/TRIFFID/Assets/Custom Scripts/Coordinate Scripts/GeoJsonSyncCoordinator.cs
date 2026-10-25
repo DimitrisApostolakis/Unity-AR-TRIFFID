@@ -202,7 +202,8 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
 
     private bool IsLocalBusy()
     {
-        return jsonSpawner == null || jsonSpawner.HasPendingLocalPersistence || HasActiveManipulation();
+        return jsonSpawner == null || jsonSpawner.HasPendingLocalPersistence ||
+            jsonSpawner.HasActiveAnnotationDraft || HasActiveManipulation();
     }
 
     private IEnumerator Synchronize()

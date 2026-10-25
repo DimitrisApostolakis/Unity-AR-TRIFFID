@@ -17,6 +17,11 @@ public interface IAnnotationPersistenceService
     void RegisterRuntimePolygonNodes(string featureId, List<Transform> nodes);
 }
 
+public interface IAnnotationDraftRegistry
+{
+    void RegisterRuntimeStroke(RuntimeLine stroke);
+}
+
 public class XRControllerLogger : MonoBehaviour
 {
     private const int FiltersSecondaryMenuIndex = 0;
@@ -444,8 +449,7 @@ public class XRControllerLogger : MonoBehaviour
         if (newState == currentState)
             return;
 
-        if ((currentState == InteractionState.DrawingLine || currentState == InteractionState.DrawingPolygon) &&
-            newState != InteractionState.DrawingLine && newState != InteractionState.DrawingPolygon)
+        if (currentState == InteractionState.DrawingLine || currentState == InteractionState.DrawingPolygon)
         {
             if (!CommitCurrentLineIfNeeded()) return;
             _undoStack.Clear();
@@ -513,48 +517,24 @@ public class XRControllerLogger : MonoBehaviour
 #if UNITY_EDITOR || UNITY_STANDALONE
     private void HandleCancelDrawingAction()
     {
-        if (currentState != InteractionState.DrawingLine && currentState != InteractionState.DrawingPolygon)
-            return;
-
-        LineSession activeLine = _currentLine;
-        if (activeLine == null || activeLine.IsSaved)
-            return;
-
-        CompactDeadNodes(activeLine);
-        int activeNodeCount = activeLine.Nodes.Count;
-        int matchingCommandCount = 0;
-
-        foreach (AddLineNodeCommand command in _undoStack)
-        {
-            if (command.TargetsLine(activeLine))
-                matchingCommandCount++;
-        }
-
-        if (activeNodeCount == 0 || matchingCommandCount != activeNodeCount)
-        {
-            Debug.LogWarning("[XRControllerLogger] Keyboard cancel skipped because the active unsaved drawing could not be identified safely.");
-            return;
-        }
-
-        List<AddLineNodeCommand> commandsToUndo = new List<AddLineNodeCommand>(matchingCommandCount);
-        Stack<AddLineNodeCommand> retainedCommands = new Stack<AddLineNodeCommand>();
-
-        while (_undoStack.Count > 0)
-        {
-            AddLineNodeCommand command = _undoStack.Pop();
-            if (command.TargetsLine(activeLine))
-                commandsToUndo.Add(command);
-            else
-                retainedCommands.Push(command);
-        }
-
-        while (retainedCommands.Count > 0)
-            _undoStack.Push(retainedCommands.Pop());
-
-        foreach (AddLineNodeCommand command in commandsToUndo)
-            command.Undo();
+        CancelCurrentAnnotation();
     }
 #endif
+
+    public void CancelCurrentAnnotation()
+    {
+        LineSession line = _currentLine;
+        if (line == null || line.IsSaved) return;
+        RemoveUndoCommandsForSession(line);
+        _lineSessions.Remove(line);
+        _currentLine = null;
+        if (line.RuntimeLine != null) line.RuntimeLine.ReleaseOwnedObjects();
+        if (line.Renderer != null)
+        {
+            if (Application.isPlaying) Destroy(line.Renderer.gameObject);
+            else DestroyImmediate(line.Renderer.gameObject);
+        }
+    }
 
     private void ExecuteLineNodeCommand(AddLineNodeCommand command)
     {
@@ -622,8 +602,16 @@ public class XRControllerLogger : MonoBehaviour
             rayDirection = rayOrigin.forward;
         }
 
-        if (!Physics.Raycast(rayOriginPosition, rayDirection, out RaycastHit hit, 100f, mapLayer))
+        Ray ray = new Ray(rayOriginPosition, rayDirection);
+        RaycastHit hit;
+        bool found = jsonSpawner != null
+            ? jsonSpawner.TryRaycastAnnotationSurface(ray, 100f, mapLayer, out hit)
+            : GeographicSurfaceQuery.TryRaycast(null, ray, 100f, mapLayer, out hit);
+        if (!found)
+        {
+            Debug.LogWarning("[XRControllerLogger] No map surface hit. Aim at the map to place an annotation vertex.");
             return false;
+        }
 
         pos = hit.point + hit.normal * baseVerticalOffset;
         rot = Quaternion.FromToRotation(Vector3.up, hit.normal);
@@ -815,11 +803,12 @@ public class XRControllerLogger : MonoBehaviour
             _missingLineMaterialDiagnosticLogged = false;
         }
 
-        lineRenderer.material = lineMaterial != null
+        Material strokeMaterial = lineMaterial != null
             ? new Material(lineMaterial)
             : new Material(Shader.Find("Unlit/Color"));
 
-        lineRenderer.material.color = color;
+        strokeMaterial.color = color;
+        lineRenderer.sharedMaterial = strokeMaterial;
         lineRenderer.startColor = color;
         lineRenderer.endColor = color;
         lineRenderer.startWidth = lineWidth;
@@ -828,7 +817,9 @@ public class XRControllerLogger : MonoBehaviour
         lineRenderer.loop = polygonMode;
 
         RuntimeLine runtimeLine = strokeGo.AddComponent<RuntimeLine>();
-        runtimeLine.Initialize(lineRenderer);
+        runtimeLine.Initialize(lineRenderer, true);
+        if (_persistence is IAnnotationDraftRegistry registry) registry.RegisterRuntimeStroke(runtimeLine);
+        else if (jsonSpawner != null) jsonSpawner.RegisterRuntimeStroke(runtimeLine);
 
         return new LineSession
         {
@@ -940,6 +931,7 @@ public class XRControllerLogger : MonoBehaviour
         }
         if (polygon) _persistence.RegisterRuntimePolygonNodes(id, activeLine.Nodes);
         else _persistence.RegisterRuntimeLineNodes(id, activeLine.Nodes);
+        if (activeLine.RuntimeLine != null) activeLine.RuntimeLine.BindToFeature(id);
         RegisterLineNodesToInfoPanel(activeLine, id);
         activeLine.IsSaved = true;
         RemoveUndoCommandsForSession(activeLine);
@@ -1099,6 +1091,8 @@ public class XRControllerLogger : MonoBehaviour
     {
         if (annotationParent != null)
             return annotationParent;
+        if (jsonSpawner != null && jsonSpawner.mapTransform != null)
+            return jsonSpawner.mapTransform;
         if (mapBoxCollider != null)
             return mapBoxCollider.transform;
         return null;

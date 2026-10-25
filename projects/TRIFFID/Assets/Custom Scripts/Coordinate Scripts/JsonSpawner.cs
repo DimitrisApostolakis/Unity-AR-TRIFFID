@@ -128,6 +128,7 @@ public class JsonSpawner : MonoBehaviour
     private readonly HashSet<string> reservedFeatureIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     
     private List<LineData> activeLines = new List<LineData>();
+    private readonly List<RuntimeLine> runtimeAnnotationStrokes = new List<RuntimeLine>();
     private readonly Dictionary<Transform, string> lineNodeColorHexByNode = new Dictionary<Transform, string>();
     private Dictionary<string, GameObject> prefabDictionaryNormalized;
     private readonly Dictionary<string, LineData> activeLinesByObjectName = new Dictionary<string, LineData>(StringComparer.Ordinal);
@@ -333,7 +334,7 @@ public class JsonSpawner : MonoBehaviour
             if (infoPanel != null) infoPanel.BeginMarkerRefresh();
             try
             {
-            ClearSpawnedObjects();
+            ClearSpawnedObjects(true);
             transformData = loadedTransform;
             transformLoadWarningShown = false;
             currentRootData = loadedRoot;
@@ -1345,8 +1346,7 @@ public class JsonSpawner : MonoBehaviour
             if (data == null)
                 continue;
 
-            if (string.Equals(data.pointID, LatestMqttFeatureId, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(data.pointClass, LatestMqttClassName, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(data.pointID, LatestMqttFeatureId, StringComparison.OrdinalIgnoreCase))
             {
                 markerObject = candidate;
                 markerData = data;
@@ -1950,6 +1950,24 @@ public class JsonSpawner : MonoBehaviour
         Collider target = surfaceSnapTargetObject == null ? null : ResolveSurfaceQueryCollider();
         if (surfaceSnapTargetObject != null && target == null) { surfaceWorldPosition = pointWorldPosition; return false; }
         return GeographicSurfaceQuery.TryHit(target, pointWorldPosition, castAxis, rayStartOffset, rayDistance, surfaceSnapMask, out surfaceWorldPosition);
+    }
+
+    public bool TryRaycastAnnotationSurface(Ray ray, float distance, LayerMask mask, out RaycastHit hit)
+    {
+        hit = default;
+        bool activated = false;
+        PrepareSurfaceForSnap(ref activated);
+        try
+        {
+            Collider target = surfaceSnapTargetObject == null ? null : ResolveSurfaceQueryCollider();
+            if (surfaceSnapTargetObject != null && target == null) return false;
+            return GeographicSurfaceQuery.TryRaycast(target, ray, distance, mask, out hit);
+        }
+        finally
+        {
+            if (activated && restoreSurfaceActiveStateAfterSnap && surfaceSnapTargetObject != null)
+                surfaceSnapTargetObject.SetActive(false);
+        }
     }
 
     private Collider ResolveSurfaceQueryCollider()
@@ -2698,7 +2716,24 @@ public class JsonSpawner : MonoBehaviour
             col.enabled = isActive;
     }
 
-    public void ClearSpawnedObjects()
+    public bool HasActiveAnnotationDraft => runtimeAnnotationStrokes.Exists(stroke =>
+        stroke != null && stroke.IsDraft && stroke.NodeCount > 0);
+
+    public void RegisterRuntimeStroke(RuntimeLine stroke)
+    {
+        runtimeAnnotationStrokes.RemoveAll(item => item == null);
+        if (stroke != null && !runtimeAnnotationStrokes.Contains(stroke)) runtimeAnnotationStrokes.Add(stroke);
+    }
+
+    public void ClearSpawnedObjects() { ClearSpawnedObjects(false); }
+
+    private static bool IsLatestMqttObject(GameObject obj)
+    {
+        PointData data = obj == null ? null : obj.GetComponent<PointData>();
+        return data != null && string.Equals(data.pointID, LatestMqttFeatureId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ClearSpawnedObjects(bool preserveRuntimeObjects)
     {
         if (infoPanel != null)
             infoPanel.ClearMarkers();
@@ -2710,19 +2745,26 @@ public class JsonSpawner : MonoBehaviour
         HashSet<GameObject> toDestroy = new HashSet<GameObject>();
 
         foreach (var obj in spawnedObjects)
-            if (obj != null)
+            if (obj != null && (!preserveRuntimeObjects || !IsLatestMqttObject(obj)))
                 toDestroy.Add(obj);
 
         foreach (var mapping in nodeMappings)
-            if (mapping?.node != null)
+            if (mapping?.node != null && (!preserveRuntimeObjects || !IsLatestMqttObject(mapping.node.gameObject)))
                 toDestroy.Add(mapping.node.gameObject);
 
         foreach (var line in activeLines)
             if (line?.renderer != null)
                 toDestroy.Add(line.renderer.gameObject);
 
+        foreach (RuntimeLine stroke in runtimeAnnotationStrokes)
+        {
+            if (stroke == null || (preserveRuntimeObjects && stroke.IsDraft)) continue;
+            stroke.ReleaseOwnedObjects();
+            toDestroy.Add(stroke.gameObject);
+        }
+
         Transform parent = mapTransform != null ? mapTransform : transform;
-        for (int i = parent.childCount - 1; i >= 0; i--)
+        for (int i = parent.childCount - 1; !preserveRuntimeObjects && i >= 0; i--)
         {
             Transform child = parent.GetChild(i);
             if (child == null)
@@ -2736,11 +2778,18 @@ public class JsonSpawner : MonoBehaviour
             if (go != null)
                 SafeDestroy(go);
 
-        spawnedObjects.Clear();
+        spawnedObjects.RemoveAll(obj => obj == null || toDestroy.Contains(obj));
         activeLines.Clear();
-        nodeMappings.Clear();
+        nodeMappings.RemoveAll(mapping => mapping?.node == null || toDestroy.Contains(mapping.node.gameObject));
+        runtimeAnnotationStrokes.RemoveAll(stroke => stroke == null || toDestroy.Contains(stroke.gameObject));
         lineNodeColorHexByNode.Clear();
         activeLinesByObjectName.Clear();
+
+        // MQTT has its own poll and lifetime. Keep its object and re-register
+        // its panel entry while GeoJSON annotations are rebuilt around it.
+        if (preserveRuntimeObjects)
+            foreach (GameObject obj in spawnedObjects)
+                if (IsLatestMqttObject(obj)) RegisterToInfoPanel(obj);
 
         if (toDestroy.Count > 0)
             Debug.Log($"[JsonSpawner] Cleared {toDestroy.Count} runtime map objects.");

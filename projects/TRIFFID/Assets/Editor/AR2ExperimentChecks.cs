@@ -31,6 +31,9 @@ public static class AR2ExperimentChecks
                 () => CheckSurface(scales[outsideIndex], outsideIndex, 0f, true, true));
         }
         Check("panel selection survives background updates and marker rebuilding", CheckPanelSelection);
+        Check("pointer placement queries a disabled mesh collider", CheckPointerPlacement);
+        Check("GeoJSON rebuilding preserves telemetry and drafts and releases saved stroke nodes", CheckRuntimeOwnership);
+        Check("switching drawing tools finalizes the previous geometry and cancel removes draft vertices", CheckDrawingTools);
         Check("surface reactivation reuses its mesh and keeps raycasts available", CheckMeshCache);
         Check("invalid calibration scale is rejected", () =>
         {
@@ -239,6 +242,124 @@ public static class AR2ExperimentChecks
         data.pointID = id;
         data.pointClass = "animal";
         return data;
+    }
+
+    private static void CheckPointerPlacement()
+    {
+        GameObject surface = new GameObject("AR2 temporary placement surface");
+        surface.hideFlags = HideFlags.HideAndDontSave;
+        Mesh mesh = new Mesh();
+        mesh.hideFlags = HideFlags.HideAndDontSave;
+        try
+        {
+            mesh.vertices = new[] { new Vector3(-1f,0f,-1f),new Vector3(-1f,0f,1f),new Vector3(1f,0f,1f),new Vector3(1f,0f,-1f) };
+            mesh.triangles = new[] { 0,1,2,0,2,3 };
+            mesh.RecalculateBounds();
+            MeshCollider collider = surface.AddComponent<MeshCollider>();
+            collider.sharedMesh = mesh;
+            collider.enabled = false;
+            RaycastHit hit;
+            Require(GeographicSurfaceQuery.TryRaycast(collider, new Ray(Vector3.up * 2f, Vector3.down), 5f, ~0, out hit),
+                "Pointer placement missed a disabled reference mesh.");
+            Require(!collider.enabled && collider.sharedMesh == mesh && Mathf.Abs(hit.point.y) < 0.001f,
+                "Placement changed the collider state or mesh.");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(surface);
+            UnityEngine.Object.DestroyImmediate(mesh);
+        }
+    }
+
+    private static void CheckRuntimeOwnership()
+    {
+        GameObject root = new GameObject("AR2 temporary annotation ownership check");
+        root.hideFlags = HideFlags.HideAndDontSave;
+        root.SetActive(false);
+        try
+        {
+            JsonSpawner spawner = root.AddComponent<JsonSpawner>();
+            spawner.mapTransform = root.transform;
+            GameObject ugv = CreatePanelMarker(root, "latest_mqtt_icon").gameObject;
+            GameObject geo = CreatePanelMarker(root, "feature_a").gameObject;
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var spawned = (System.Collections.Generic.List<GameObject>)typeof(JsonSpawner).GetField("spawnedObjects", flags).GetValue(spawner);
+            spawned.Add(ugv); spawned.Add(geo);
+            GameObject strokeObject = new GameObject("AR2 temporary draft stroke");
+            strokeObject.transform.SetParent(root.transform, false);
+            RuntimeLine stroke = strokeObject.AddComponent<RuntimeLine>();
+            stroke.Initialize(strokeObject.AddComponent<LineRenderer>(), true);
+            GameObject node = new GameObject("AR2 temporary draft vertex");
+            node.transform.SetParent(root.transform, false);
+            stroke.AddNode(node.transform);
+            spawner.RegisterRuntimeStroke(stroke);
+            var clear = typeof(JsonSpawner).GetMethod("ClearSpawnedObjects", flags, null, new[] { typeof(bool) }, null);
+            clear.Invoke(spawner, new object[] { true });
+            Require(spawned.Contains(ugv) && !spawned.Contains(geo) && stroke != null && node != null && spawner.HasActiveAnnotationDraft,
+                "Refreshing GeoJSON removed telemetry/draft objects or retained a stale feature.");
+            stroke.BindToFeature("saved_annotation");
+            clear.Invoke(spawner, new object[] { true });
+            Require(spawned.Contains(ugv) && !spawner.HasActiveAnnotationDraft, "Saved stroke cleanup disturbed telemetry or retained a draft.");
+            if (!Application.isPlaying) Require(stroke == null && node == null, "Saved stroke left orphan vertices.");
+        }
+        finally { UnityEngine.Object.DestroyImmediate(root); }
+    }
+
+    private sealed class DrawingCheckPersistence : IAnnotationPersistenceService, IAnnotationDraftRegistry
+    {
+        public int lines, polygons, strokes;
+        public string SavePoint(GameObject point, string type) { return "point"; }
+        public string SaveLine(System.Collections.Generic.IReadOnlyList<Vector3> points, string type, Color color) { lines++; return "line_" + lines; }
+        public string SavePolygon(System.Collections.Generic.IReadOnlyList<Vector3> points, string type, string category, Color color) { polygons++; return "polygon_" + polygons; }
+        public bool DeleteFeatureByNode(Transform node, bool requireDrawMode = false) { return true; }
+        public void RegisterRuntimeLineNodes(string id, System.Collections.Generic.List<Transform> nodes) { }
+        public void RegisterRuntimePolygonNodes(string id, System.Collections.Generic.List<Transform> nodes) { }
+        public void RegisterRuntimeStroke(RuntimeLine stroke) { strokes++; }
+    }
+
+    private static void CheckDrawingTools()
+    {
+        GameObject root = new GameObject("AR2 temporary drawing tool check");
+        root.hideFlags = HideFlags.HideAndDontSave;
+        root.SetActive(false);
+        Material material = new Material(Shader.Find("Hidden/InternalErrorShader"));
+        try
+        {
+            XRControllerLogger logger = root.AddComponent<XRControllerLogger>();
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            typeof(XRControllerLogger).GetField("lineMaterial", flags).SetValue(logger, material);
+            GameObject prefab = new GameObject("AR2 temporary drawing node template");
+            prefab.transform.SetParent(root.transform, false);
+            typeof(XRControllerLogger).GetField("lineNodePrefab", flags).SetValue(logger, prefab);
+            var persistence = new DrawingCheckPersistence();
+            logger.InjectDependencies(null, persistence);
+            var session = typeof(XRControllerLogger).GetMethod("GetOrCreateCurrentLine", flags);
+            var add = typeof(XRControllerLogger).GetMethod("CreateLineNode", flags);
+            logger.SelectLineDrawingMode();
+            object line = session.Invoke(logger, null);
+            add.Invoke(logger, new object[] { line, Vector3.zero });
+            add.Invoke(logger, new object[] { line, Vector3.right });
+            logger.SelectPolygonDrawingMode();
+            Require(persistence.lines == 1 && persistence.polygons == 0, "Changing to polygon mode did not finish the line first.");
+            object polygon = session.Invoke(logger, null);
+            add.Invoke(logger, new object[] { polygon, Vector3.zero });
+            add.Invoke(logger, new object[] { polygon, Vector3.right });
+            add.Invoke(logger, new object[] { polygon, Vector3.forward });
+            logger.SelectLineDrawingMode();
+            Require(persistence.polygons == 1, "Changing to line mode did not finish the polygon first.");
+            object draft = session.Invoke(logger, null);
+            Transform node = (Transform)add.Invoke(logger, new object[] { draft, Vector3.zero });
+            logger.CancelCurrentAnnotation();
+            if (!Application.isPlaying) Require(node == null, "Cancelling a draft retained its vertex.");
+            Require(persistence.lines == 1, "Cancelling uploaded the unfinished draft.");
+            Require(persistence.strokes == 3, "The persistence owner did not receive the three drawing sessions.");
+        }
+        finally
+        {
+            foreach (RuntimeLine line in root.GetComponentsInChildren<RuntimeLine>(true)) line.ReleaseOwnedObjects();
+            UnityEngine.Object.DestroyImmediate(root);
+            UnityEngine.Object.DestroyImmediate(material);
+        }
     }
 
     private static void Check(string name, Action action)

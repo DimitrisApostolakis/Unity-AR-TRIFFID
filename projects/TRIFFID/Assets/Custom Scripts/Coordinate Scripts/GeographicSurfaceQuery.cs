@@ -50,21 +50,46 @@ public static class GeographicSurfaceQuery
     private static bool Cast(Collider target, Vector3 origin, Vector3 direction, float distance, LayerMask mask, out Vector3 surface)
     {
         surface = origin;
-        Ray ray = new Ray(origin, direction);
+        RaycastHit hit;
+        if (!CastPrepared(target, new Ray(origin, direction), distance, mask, out hit)) return false;
+        surface = hit.point;
+        return true;
+    }
+
+    // Pointer placement uses the same configured surface and collider-state
+    // handling as height queries, but preserves the hit normal for orientation.
+    public static bool TryRaycast(Collider target, Ray ray, float distance, LayerMask mask, out RaycastHit hit)
+    {
+        hit = default;
+        if (!Finite(distance) || distance <= 0f || !Finite(ray.direction.sqrMagnitude) || ray.direction.sqrMagnitude < 1e-12f ||
+            (target != null && !target.gameObject.activeInHierarchy)) return false;
+        bool temporarilyEnabled = target != null && !target.enabled;
+        try
+        {
+            if (temporarilyEnabled) target.enabled = true;
+            Physics.SyncTransforms();
+            return CastPrepared(target, ray, distance, mask, out hit);
+        }
+        finally
+        {
+            if (temporarilyEnabled && target != null) target.enabled = false;
+        }
+    }
+
+    private static bool CastPrepared(Collider target, Ray ray, float distance, LayerMask mask, out RaycastHit result)
+    {
+        result = default;
         if (target != null)
         {
             if (!target.enabled || !target.gameObject.activeInHierarchy) return false;
-            RaycastHit hit;
-            if (!target.Raycast(ray, out hit, distance)) return false;
-            surface = hit.point;
-            return true;
+            return target.Raycast(ray, out result, distance);
         }
         RaycastHit[] hits = Physics.RaycastAll(ray, distance, mask, QueryTriggerInteraction.Ignore);
         Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
         foreach (RaycastHit hit in hits)
         {
             if (hit.collider == null || hit.collider.GetComponentInParent<PointData>() != null) continue;
-            surface = hit.point;
+            result = hit;
             return true;
         }
         return false;

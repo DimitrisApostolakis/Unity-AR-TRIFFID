@@ -23,14 +23,22 @@ public class RuntimeLine : MonoBehaviour
     private readonly Dictionary<Transform, NodeTransformObserver> _observers = new Dictionary<Transform, NodeTransformObserver>();
     private LineRenderer _lineRenderer;
     private bool _dirty;
+    private bool _ownsNodes;
+    private Material _ownedMaterial;
 
     public int NodeCount => _nodes.Count;
+    public string FeatureId { get; private set; }
+    public bool IsDraft => _ownsNodes && string.IsNullOrEmpty(FeatureId);
 
-    public void Initialize(LineRenderer lineRenderer)
+    public void Initialize(LineRenderer lineRenderer, bool ownsNodes = false)
     {
         _lineRenderer = lineRenderer;
+        _ownsNodes = ownsNodes;
+        _ownedMaterial = ownsNodes && lineRenderer != null ? lineRenderer.sharedMaterial : null;
         MarkDirty();
     }
+
+    public void BindToFeature(string featureId) { FeatureId = featureId; }
 
     public void AddNode(Transform node)
     {
@@ -73,6 +81,13 @@ public class RuntimeLine : MonoBehaviour
 
     private void OnDestroy()
     {
+        ReleaseOwnedObjects();
+    }
+
+    // Draft vertices are siblings of their stroke, not children. Their owner
+    // must release them too, otherwise deleting a stroke leaves orphan dots.
+    public void ReleaseOwnedObjects()
+    {
         foreach (var pair in _observers)
         {
             if (pair.Value != null)
@@ -80,6 +95,18 @@ public class RuntimeLine : MonoBehaviour
         }
 
         _observers.Clear();
+        if (_ownsNodes)
+            foreach (Transform node in _nodes)
+                if (node != null) DestroyOwned(node.gameObject);
+        _nodes.Clear();
+        if (_ownedMaterial != null) DestroyOwned(_ownedMaterial);
+        _ownedMaterial = null;
+    }
+
+    private static void DestroyOwned(UnityEngine.Object value)
+    {
+        if (Application.isPlaying) Destroy(value);
+        else DestroyImmediate(value);
     }
 
     private void SubscribeToNode(Transform node)
@@ -133,3 +160,4 @@ public class RuntimeLine : MonoBehaviour
 
     private void MarkDirty() => _dirty = true;
 }
+

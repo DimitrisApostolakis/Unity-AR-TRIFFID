@@ -108,17 +108,57 @@ public static class InteractionRegressionTests
                 Invoke(f.panel,"OnDisable"); Invoke(f.panel,"OnEnable"); Check(f.panel.IsObservingMarker(b));
             }
         });
-        Test("sync status precedes the retained source and estimated height uses a second line",()=>
+        Test("source stays visible without sync status and estimated height uses a second line",()=>
         {
             using(PanelFixture f=new PanelFixture())
             {
                 PointData a=f.Register("a"); a.syncStatus="Pending"; a.source="GROUND STATION";
                 a.hasHeightAboveSurface=true; a.heightAboveSurface=6.72; a.heightSource="retained"; a.NotifyDataChanged();
-                Check(f.source.text=="PENDING\nGROUND STATION"); Check(f.height.text=="6.72 m\n<size=70%>(Estimated)</size>");
+                Check(f.source.text=="GROUND STATION"); Check(f.height.text=="6.72 m\n<size=70%>(Estimated)</size>");
                 a.heightSource="mesh"; a.heightAboveSurface=-0.4; a.NotifyDataChanged(); Check(f.height.text=="-0.40 m");
                 a.elevationUnresolved=true; a.NotifyDataChanged(); Check(f.height.text=="-");
                 a.elevationUnresolved=false; a.hasHeightAboveSurface=false; a.NotifyDataChanged(); Check(f.height.text=="-");
             }
+        });
+        Test("pointer placement queries a disabled map and preserves its hit normal",()=>
+        {
+            Collider c=Surface(false); c.query=(ray,d)=>new RaycastHit { point=new Vector3(1,2,3),normal=Vector3.up };
+            RaycastHit hit; Check(GeographicSurfaceQuery.TryRaycast(c,new Ray(Vector3.zero,Vector3.up),10,~0,out hit));
+            Check(hit.point.y==2 && hit.normal.y==1 && !c.enabled);
+        });
+        Test("pointer placement restores a disabled map after misses and exceptions",()=>
+        {
+            Collider c=Surface(false); RaycastHit hit;
+            Check(!GeographicSurfaceQuery.TryRaycast(c,new Ray(Vector3.zero,Vector3.up),10,~0,out hit) && !c.enabled);
+            c.query=(ray,d)=>{throw new InvalidOperationException("test");}; bool threw=false;
+            try { GeographicSurfaceQuery.TryRaycast(c,new Ray(Vector3.zero,Vector3.up),10,~0,out hit); }
+            catch(InvalidOperationException) { threw=true; }
+            Check(threw && !c.enabled);
+        });
+        Test("a stroke owns draft nodes until it binds to a saved feature",()=>
+        {
+            GameObject go=new GameObject(); RuntimeLine line=go.AddComponent<RuntimeLine>();
+            LineRenderer renderer=go.AddComponent<LineRenderer>(); line.Initialize(renderer,true);
+            Check(line.IsDraft); line.AddNode(new GameObject().transform); Check(line.NodeCount==1);
+            line.BindToFeature("feature_a"); Check(!line.IsDraft && line.FeatureId=="feature_a");
+        });
+        Test("releasing a drawing stroke removes its sibling nodes and owned material",()=>
+        {
+            foreach(bool play in new[] { false,true })
+            {
+                Application.isPlaying=play; GameObject go=new GameObject(), node=new GameObject();
+                RuntimeLine line=go.AddComponent<RuntimeLine>(); LineRenderer renderer=go.AddComponent<LineRenderer>();
+                Material material=new Material(); renderer.sharedMaterial=material;
+                line.Initialize(renderer,true); line.AddNode(node.transform); line.ReleaseOwnedObjects();
+                Check(node.destroyed && material.destroyed && line.NodeCount==0); line.ReleaseOwnedObjects();
+            }
+        });
+        Test("a loaded line does not destroy nodes or a material it does not own",()=>
+        {
+            GameObject go=new GameObject(), node=new GameObject(); RuntimeLine line=go.AddComponent<RuntimeLine>();
+            LineRenderer renderer=go.AddComponent<LineRenderer>(); Material material=new Material(); renderer.sharedMaterial=material;
+            line.Initialize(renderer); line.AddNode(node.transform); line.ReleaseOwnedObjects();
+            Check(!node.destroyed && !material.destroyed && !line.IsDraft);
         });
         Console.WriteLine("INTERACTION RESULT: "+passed+" passed, "+failed+" failed"); return failed==0?0:1;
     }

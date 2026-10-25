@@ -38,8 +38,8 @@ If these dependencies are not in their usual locations, set `AR2_MONO`,
 `AR2_CSC`, and `AR2_NEWTONSOFT_DLL`. A private Mono installation can also use
 `AR2_MONO_CONFIG`, `MONO_PATH`, and `LD_LIBRARY_PATH`.
 
-The verified result is **57 core checks, 18 coordinator checks, 12 mesh
-loader checks, and 15 interaction checks passed**. The mesh checks compile the production loader with
+The verified result is **57 core checks, 19 coordinator checks, 12 mesh
+loader checks, and 20 interaction checks passed**. The mesh checks compile the production loader with
 engine test doubles and exercise cache reuse, invalidation, explicit reload,
 collider bindings, and runtime/imported-mesh ownership.
 The runner compiles the production data models, outbox, polygon validator,
@@ -49,7 +49,7 @@ transport, and local-file ownership. They do not execute Unity physics,
 the complete application, or a real server.
 
 The interaction checks compile the production information panel, marker event
-manager, and surface query with engine doubles in a runtime library, then compile
+manager, runtime stroke, and surface query with engine doubles in a runtime library, then compile
 the checks in a separate assembly to catch Editor/runtime visibility mistakes.
 They verify collider-state
 restoration on hits, misses, invalid rays and exceptions, stable panel selection,
@@ -68,9 +68,10 @@ unchanged. The separately configured inactive-object activation policy still
 applies; a query does not activate an inactive object by itself.
 
 Unavailable elevation or height displays `-`. Estimated height has its own
-second line, with `(Estimated)` below the numeric value. Sync status appears
-between the class and source, for example `ANIMAL`, `PENDING`, `GROUND STATION`.
-The source remains stored and displayed.
+second line, with `(Estimated)` below the numeric value. The panel displays the
+class and source, for example `ANIMAL` and `GROUND STATION`. Synchronization
+status stays in the synchronization state and diagnostics rather than appearing
+in the point information panel.
 
 Hover events and metadata changes for another marker no longer select it.
 The panel follows explicit marker selection and previous/next navigation.
@@ -79,6 +80,28 @@ reordered feature collections do not send the panel back to the first point.
 Removing a different marker preserves the current selection. If the selected
 feature disappears in a server rebuild, the panel clears until another explicit
 selection rather than showing an unrelated feature.
+
+## Telemetry and drawing ownership
+
+A GeoJSON rebuild now clears only its tracked annotations and saved runtime
+strokes. It preserves the latest-MQTT marker's GameObject and re-registers its
+panel entry. Previously the broad child cleanup destroyed the telemetry marker,
+which reappeared at the next MQTT poll even when its coordinates were unchanged.
+
+Drawing strokes register with the spawner and own their sibling vertices and
+temporary material. An unfinished stroke survives a rebuild, and the coordinator
+waits while it has draft vertices. Finishing or cancelling releases that wait.
+Destroying a saved stroke or cancelling a draft also releases its owned vertices,
+preventing orphan dots. A full explicit Clear Spawned Objects still clears all
+runtime content.
+
+Pointer placement uses the same configured reference surface and temporary
+collider enabling as height queries. It no longer depends on a disabled global
+physics target, or on hitting a marker instead of the reference surface. Switching
+between line and polygon tools first commits the previous geometry. Invalid
+drawings stay editable. Keyboard Enter finalizes, Backspace undoes a vertex,
+and Escape cancels the unfinished annotation. `CancelCurrentAnnotation` is also
+available to bind to an XR UI control.
 
 ## Server authority and offline backup
 
@@ -152,7 +175,7 @@ cause of a scene hitch.
 2. Wait for scripts to compile. Resolve any compiler errors before proceeding.
 3. Outside Play mode, select **AR2 > Experiments > Run Regression Checks**.
 4. Inspect the Console. Expected results are 57 passing core checks and
-   **44 passing Unity checks**, with no failing checks.
+   **47 passing Unity checks**, with no failing checks.
 
 The Unity checks create and remove temporary objects. They check signed
 offsets of -2, 0, and +2 metres, out-of-mesh searches, map translation and
@@ -161,7 +184,9 @@ scaled hierarchy. They also check rejection of invalid calibration scale and
 the unresolved-elevation marker colour. The same 20 surface cases also run with
 the collider initially disabled and check that it stays disabled after the
 query, including misses. An additional panel check verifies selection through
-background updates, rebuilding and server deletion. They have not been run in the remote
+background updates, rebuilding and server deletion. Further native checks cover
+pointer placement on a disabled mesh, telemetry/draft preservation and saved-stroke
+cleanup, and line/polygon tool switching and cancellation. They have not been run in the remote
 development environment because the Unity editor is unavailable there.
 
 The additional mesh-cache check loads a temporary OBJ, repeatedly invokes the
@@ -236,7 +261,11 @@ Inspector settings, server version, feature IDs, and Console output.
 | Inspect a negative mesh height in the information panel | It displays a signed number such as `-0.40 m`, without a below-surface suffix. |
 | Disable the surface MeshCollider while manipulating the map, then query an annotation's height | A valid mesh intersection still resolves the height. The MeshCollider remains disabled after the query. |
 | Leave one marker selected while hovering others, receiving MQTT updates, or applying server refreshes | The panel retains the selected feature and node, unless that feature was removed. |
-| Inspect an estimated height and a pending marker | The estimate label appears below the number. Status appears between the class and retained source. Missing height/elevation is `-`. |
+| Inspect an estimated height and a pending marker | The estimate label appears below the number. Only the class and source are shown above the confidence bar. Missing height/elevation is `-`. |
+| Refresh server annotations while the latest UGV telemetry is unchanged | The same telemetry GameObject remains visible without waiting for the next MQTT poll. |
+| Start a line or polygon, wait through a remote polling deadline, then finish or cancel it | Vertices and the draft stroke remain together. Synchronization resumes afterwards. |
+| Cancel a draft or remove a saved drawing through server refresh | The stroke and its owned vertices disappear together without leaving orphan dots. |
+| Draw with the reference MeshCollider disabled, then switch line/polygon tools | Pointer placement still hits the configured mesh. The previous valid drawing finishes before a new geometry type starts. |
 
 Server edits and deletions do not require manual conflict resolution. For
 unresolved create identities or duplicate client IDs, select the object with

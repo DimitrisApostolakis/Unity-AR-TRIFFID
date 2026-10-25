@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [DisallowMultipleComponent]
-public class JsonSpawnerPersistenceAdapter : MonoBehaviour, IAnnotationPersistenceService
+public class JsonSpawnerPersistenceAdapter : MonoBehaviour, IAnnotationPersistenceService, IAnnotationDraftRegistry
 {
     [SerializeField] private JsonSpawner jsonSpawner;
     private bool missingSpawnerWarningLogged;
@@ -106,6 +106,12 @@ public class JsonSpawnerPersistenceAdapter : MonoBehaviour, IAnnotationPersisten
         jsonSpawner.RegisterRuntimePolygonNodes(featureId, nodes);
     }
 
+    public void RegisterRuntimeStroke(RuntimeLine stroke)
+    {
+        if (jsonSpawner == null) { LogMissingSpawnerOnce("RegisterRuntimeStroke"); return; }
+        jsonSpawner.RegisterRuntimeStroke(stroke);
+    }
+
     private void LogMissingSpawnerOnce(string operation)
     {
         if (missingSpawnerWarningLogged)
@@ -115,3 +121,4 @@ public class JsonSpawnerPersistenceAdapter : MonoBehaviour, IAnnotationPersisten
         missingSpawnerWarningLogged = true;
     }
 }
+

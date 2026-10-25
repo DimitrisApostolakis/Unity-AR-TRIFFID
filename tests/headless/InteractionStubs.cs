@@ -10,8 +10,10 @@ namespace UnityEngine
         private static int nextId;
         private readonly int id=++nextId;
         public string name="test";
+        public bool destroyed;
         public int GetInstanceID() { return id; }
-        public static void Destroy(Object obj) { }
+        public static void Destroy(Object obj) { if(obj!=null) obj.destroyed=true; }
+        public static void DestroyImmediate(Object obj) { Destroy(obj); }
     }
     public class Component:Object
     {
@@ -52,7 +54,14 @@ namespace UnityEngine
         }
         public void StopCoroutine(Coroutine routine) { }
     }
-    public class Transform:Component { public Matrix4x4 localToWorldMatrix; }
+    public class Transform:Component { public Matrix4x4 localToWorldMatrix; public bool hasChanged; public Vector3 position; }
+    public class Material:Object { }
+    public class LineRenderer:Component
+    {
+        public Material sharedMaterial;
+        public int positionCount;
+        public void SetPosition(int i,Vector3 point) { }
+    }
     public class Coroutine { }
     public class Sprite:Object { }
     public class CanvasGroup:Component { public float alpha; }
@@ -77,7 +86,7 @@ namespace UnityEngine
     }
     public struct LayerMask { public static implicit operator LayerMask(int value) { return new LayerMask(); } }
     public struct Ray { public Vector3 origin,direction; public Ray(Vector3 origin,Vector3 direction) { this.origin=origin;this.direction=direction; } }
-    public struct RaycastHit { public Vector3 point; public float distance; public Collider collider; }
+    public struct RaycastHit { public Vector3 point,normal; public float distance; public Collider collider; }
     public class Collider:Component
     {
         private bool enabledValue=true;
@@ -108,11 +117,13 @@ namespace UnityEngine
         public static float Lerp(float a,float b,float t) { return a+(b-a)*t; }
     }
     public static class Time { public static float deltaTime=1f; }
+    public static class Application { public static bool isPlaying; }
     public static class Debug { public static void Log(object v) { } public static void LogWarning(object v) { } public static void LogWarning(object v,Object context) { } }
     public sealed class Header:Attribute { public Header(string s) { } }
     public sealed class Tooltip:Attribute { public Tooltip(string s) { } }
     public sealed class SerializeField:Attribute { }
     public sealed class Min:Attribute { public Min(float v) { } }
+    public sealed class DisallowMultipleComponent:Attribute { }
 }
 namespace TMPro { public class TextMeshProUGUI:UnityEngine.Component { public string text; } }
 namespace UnityEngine.UI

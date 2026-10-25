@@ -209,6 +209,16 @@ public static class CoordinatorRegressionTests
                 Check(f.Load().syncState.pending.Count==0 && f.api.updateCount==0 && f.api.createCount==0);
             }
         });
+        Test("a draft pauses server replacement until drawing is finished or cancelled", () =>
+        {
+            using(Fixture f=new Fixture(Clean(Point("a",1))))
+            {
+                f.spawner.HasActiveAnnotationDraft=true; f.worker.RefreshFromServer(); f.Steps(25);
+                Check(f.api.fetchCount==0 && f.spawner.respawns==0 && f.Load().features.Count==1);
+                f.spawner.HasActiveAnnotationDraft=false; f.Until(()=>f.Load().features.Count==0);
+                Check(f.spawner.respawns==1 && f.api.fetchCount==1);
+            }
+        });
         Console.WriteLine("COORDINATOR RESULT: "+passed+" passed, "+failed+" failed");
         return failed==0?0:1;
     }

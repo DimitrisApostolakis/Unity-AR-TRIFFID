@@ -32,7 +32,7 @@ public class PointInfoPanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI longValueText;
     [Tooltip("Text displaying the selected marker class.")]
     [SerializeField] private TextMeshProUGUI classText;
-    [Tooltip("Text displaying synchronization status followed by the selected marker source, below its class.")]
+    [Tooltip("Text displaying the selected marker source below its class.")]
     [SerializeField] private TextMeshProUGUI sourceText;
 
     [Header("Category Icons")]
@@ -525,9 +525,7 @@ public class PointInfoPanel : MonoBehaviour
                 ? $"{p.heightAboveSurface:F2} m" + (p.heightSource == "mesh" ? "" : "\n<size=70%>(Estimated)</size>")
                 : "-";
         }
-        if (sourceText != null) sourceText.text =
-            (string.IsNullOrEmpty(p.syncStatus) ? string.Empty : p.syncStatus.ToUpperInvariant() + "\n") +
-            (IsProtectedLatestMqttMarker(p) ? string.Empty : p.source);
+        if (sourceText != null) sourceText.text = IsProtectedLatestMqttMarker(p) ? string.Empty : p.source;
         if (latValueText      != null) latValueText.text      = $"{Mathf.Abs((float)p.latitude):F4}° {(p.latitude  >= 0 ? "N" : "S")}";
         if (longValueText     != null) longValueText.text     = $"{Mathf.Abs((float)p.longitude):F4}° {(p.longitude >= 0 ? "E" : "W")}";
 

@@ -38,6 +38,7 @@ public sealed class JsonSpawner
 {
     public string path;
     public bool HasPendingLocalPersistence;
+    public bool HasActiveAnnotationDraft;
     public int LocalPersistenceVersion;
     public bool allowCommit=true;
     public int respawns;
