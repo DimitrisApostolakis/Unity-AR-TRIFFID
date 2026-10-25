@@ -361,6 +361,54 @@ public static class AR2CoreRegressionTests
             int dropped; bool threw=false; try { GeoJsonPayloadParser.Parse(obj.ToString(),out dropped); } catch(JsonSerializationException) { threw=true; }
             Check(threw);
         });
+        Test("visibility filters can be set before any server features arrive", () =>
+        {
+            GeoJsonVisibilityFilter filter=new GeoJsonVisibilityFilter(); filter.SetVisibility("animal",false);
+            Feature animal=Point("animal_a",1); animal.properties.className="animal";
+            Check(!filter.IsVisible(animal)); Check(filter.IsVisible(Point("citizen_a",2)));
+        });
+        Test("reloading serialized features does not reset a selected filter", () =>
+        {
+            GeoJsonVisibilityFilter filter=new GeoJsonVisibilityFilter(); filter.SetVisibility("animal",false);
+            Feature animal=Point("a",1); animal.properties.className="animal";
+            Root root=Collection(animal); string json=JsonConvert.SerializeObject(root);
+            for(int i=0;i<3;i++)
+            {
+                root=JsonConvert.DeserializeObject<Root>(json); Check(!filter.IsVisible(root.features[0]));
+                Check(JsonConvert.SerializeObject(root)==json);
+            }
+        });
+        Test("new incoming features use the active class or category filter", () =>
+        {
+            GeoJsonVisibilityFilter filter=new GeoJsonVisibilityFilter(); filter.SetVisibility("animal",false);
+            Feature byClass=Point("a",1), byCategory=Point("b",2);
+            byClass.properties.className="animal"; byCategory.properties.category="animals";
+            Check(!filter.IsVisible(byClass) && !filter.IsVisible(byCategory));
+        });
+        Test("enabling one category leaves other hidden categories unchanged", () =>
+        {
+            GeoJsonVisibilityFilter filter=new GeoJsonVisibilityFilter();
+            Feature animal=Point("a",1), citizen=Point("b",2); animal.properties.className="animal"; citizen.properties.className="citizen";
+            filter.SetVisibility("animal",false); filter.SetVisibility("citizen",false);
+            filter.SetVisibility("animal",true); Check(filter.IsVisible(animal) && !filter.IsVisible(citizen));
+        });
+        Test("filter aliases and class prefixes retain their existing matching behavior", () =>
+        {
+            GeoJsonVisibilityFilter filter=new GeoJsonVisibilityFilter(); Feature animal=Point("a",1); animal.properties.className="Animal_Marker";
+            filter.SetVisibility(" ANIMALS ",false); Check(!filter.IsVisible(animal));
+            filter.SetVisibility("animal",true); Check(filter.IsVisible(animal));
+            Feature city=Point("b",1); city.properties.category="city"; filter.SetVisibility("cities",false); Check(!filter.IsVisible(city));
+        });
+        Test("POI visibility rules preserve geometry scope and leave telemetry unrelated to the filter", () =>
+        {
+            GeoJsonVisibilityFilter filter=new GeoJsonVisibilityFilter(); filter.SetVisibility("animal",false);
+            Feature feature=Point("a",1); feature.properties.className="animal";
+            foreach(string type in new[] { "Point","MultiPoint","Polygon","MultiPolygon" })
+            { feature.geometry.type=type; Check(!filter.IsVisible(feature)); }
+            feature.geometry.type="LineString"; Check(filter.IsVisible(feature));
+            feature.geometry.type="Point"; feature.properties.className="ugv"; feature.properties.category="telemetry";
+            Check(filter.IsVisible(feature));
+        });
         Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed");
         return failed == 0 ? 0 : 1;
     }

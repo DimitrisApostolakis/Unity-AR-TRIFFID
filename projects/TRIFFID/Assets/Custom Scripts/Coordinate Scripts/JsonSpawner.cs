@@ -129,6 +129,7 @@ public class JsonSpawner : MonoBehaviour
     
     private List<LineData> activeLines = new List<LineData>();
     private readonly List<RuntimeLine> runtimeAnnotationStrokes = new List<RuntimeLine>();
+    private readonly GeoJsonVisibilityFilter categoryVisibility = new GeoJsonVisibilityFilter();
     private readonly Dictionary<Transform, string> lineNodeColorHexByNode = new Dictionary<Transform, string>();
     private Dictionary<string, GameObject> prefabDictionaryNormalized;
     private readonly Dictionary<string, LineData> activeLinesByObjectName = new Dictionary<string, LineData>(StringComparer.Ordinal);
@@ -375,6 +376,7 @@ public class JsonSpawner : MonoBehaviour
 
             // SetAllColliders(true);
             ApplyColliderStateToSpawnedObjects(collidersDesiredActive, false);
+            ApplyCurrentCategoryFilters();
             UpdateSyncStatusLabels();
 
             }
@@ -1751,6 +1753,7 @@ public class JsonSpawner : MonoBehaviour
             
             SetupIcon(obj);
             RegisterToInfoPanel(obj);
+            ApplyFeatureVisibility(obj, feature);
 
             return obj.transform;
         }
@@ -2839,75 +2842,30 @@ public class JsonSpawner : MonoBehaviour
 
     public void SetCategoryVisibility(string targetCategory, bool isVisible)
     {
-        if (string.IsNullOrEmpty(targetCategory)) return;
+        categoryVisibility.SetVisibility(targetCategory, isVisible);
+        ApplyCurrentCategoryFilters();
+    }
 
-        string targetNorm = NormalizeCategoryToken(targetCategory);
-        if (string.IsNullOrEmpty(targetNorm))
-            return;
+    private void ApplyFeatureVisibility(GameObject obj, Feature feature)
+    {
+        bool visible;
+        if (obj != null && categoryVisibility.TryGetVisibility(feature, out visible) && obj.activeSelf != visible)
+            obj.SetActive(visible);
+    }
 
-        HashSet<string> targetTokens = BuildCategoryTokens(targetNorm);
-
-        foreach (var mapping in nodeMappings)
+    private void ApplyCurrentCategoryFilters()
+    {
+        foreach (NodeMapping mapping in nodeMappings)
+            if (mapping?.node != null) ApplyFeatureVisibility(mapping.node.gameObject, mapping.parentFeature);
+        foreach (LineData line in activeLines)
+            if (line?.renderer != null) ApplyFeatureVisibility(line.renderer.gameObject, line.parentFeature);
+        foreach (RuntimeLine stroke in runtimeAnnotationStrokes)
         {
-            if (mapping.node == null || mapping.parentFeature == null || mapping.parentFeature.properties == null) continue;
-
-            string type      = mapping.parentFeature.geometry?.type;
-            string category  = mapping.parentFeature.properties.category ?? "";
-            string className = mapping.parentFeature.properties.className ?? "";
-
-            if (type == "Point" || type == "MultiPoint" || type == "Polygon" || type == "MultiPolygon")
-            {
-                string categoryNorm = NormalizeCategoryToken(category);
-                string classNorm = NormalizeCategoryToken(className);
-
-                if (MatchesCategory(targetTokens, categoryNorm) || MatchesCategory(targetTokens, classNorm))
-                    mapping.node.gameObject.SetActive(isVisible);
-            }
+            if (stroke == null || string.IsNullOrEmpty(stroke.FeatureId) || currentRootData?.features == null) continue;
+            Feature feature = currentRootData.features.Find(item => item != null &&
+                string.Equals(item.id, stroke.FeatureId, StringComparison.OrdinalIgnoreCase));
+            ApplyFeatureVisibility(stroke.gameObject, feature);
         }
-    }
-
-    private static bool MatchesCategory(HashSet<string> targetTokens, string candidateToken)
-    {
-        if (targetTokens == null || targetTokens.Count == 0 || string.IsNullOrEmpty(candidateToken))
-            return false;
-
-        foreach (string token in targetTokens)
-        {
-            if (candidateToken.StartsWith(token, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static HashSet<string> BuildCategoryTokens(string token)
-    {
-        HashSet<string> tokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrEmpty(token))
-            return tokens;
-
-        tokens.Add(token);
-
-        if (token.EndsWith("ies", StringComparison.OrdinalIgnoreCase) && token.Length > 3)
-            tokens.Add(token.Substring(0, token.Length - 3) + "y");
-
-        if (token.EndsWith("y", StringComparison.OrdinalIgnoreCase) && token.Length > 1)
-            tokens.Add(token.Substring(0, token.Length - 1) + "ies");
-
-        if (token.EndsWith("s", StringComparison.OrdinalIgnoreCase) && token.Length > 1)
-            tokens.Add(token.Substring(0, token.Length - 1));
-        else
-            tokens.Add(token + "s");
-
-        return tokens;
-    }
-
-    private static string NormalizeCategoryToken(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        return value.Trim().Replace("_", string.Empty).Replace("-", string.Empty).Replace(" ", string.Empty).ToLowerInvariant();
     }
 
     public bool DeleteFeatureByNode(Transform node, bool requireDrawMode = false)
@@ -3319,6 +3277,7 @@ public class JsonSpawner : MonoBehaviour
             parentCentroid = null
         });
 
+        ApplyFeatureVisibility(obj, newFeature);
         SaveToJson();
 
         if (infoPanel != null)
@@ -3451,6 +3410,7 @@ public class JsonSpawner : MonoBehaviour
             parentCentroid = null
         });
 
+        ApplyFeatureVisibility(obj, newFeature);
         SaveToJson();
         Debug.Log($"[JsonSpawner] AddPointFeatureAndSave: {className} ID={newId}");
         return newId;

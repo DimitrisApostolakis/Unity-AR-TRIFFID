@@ -38,7 +38,7 @@ If these dependencies are not in their usual locations, set `AR2_MONO`,
 `AR2_CSC`, and `AR2_NEWTONSOFT_DLL`. A private Mono installation can also use
 `AR2_MONO_CONFIG`, `MONO_PATH`, and `LD_LIBRARY_PATH`.
 
-The verified result is **57 core checks, 19 coordinator checks, 12 mesh
+The verified result is **63 core checks, 19 coordinator checks, 12 mesh
 loader checks, and 20 interaction checks passed**. The mesh checks compile the production loader with
 engine test doubles and exercise cache reuse, invalidation, explicit reload,
 collider bindings, and runtime/imported-mesh ownership.
@@ -102,6 +102,17 @@ between line and polygon tools first commits the previous geometry. Invalid
 drawings stay editable. Keyboard Enter finalizes, Backspace undoes a vertex,
 and Escape cancels the unfinished annotation. `CancelCurrentAnnotation` is also
 available to bind to an XR UI control.
+
+## POI filters across saves and server refreshes
+
+Visibility choices are now held in a separate runtime filter model rather than
+only changing the current GameObjects. Rebuilding saved/server GeoJSON reapplies
+those choices, and incoming or locally created POIs inherit the active filters.
+Choices survive annotation cleanup during the current session. Filter state is
+not written into the GeoJSON or sent to the server, and hiding a POI does not
+delete its geographic data. Existing category/class matching and plural aliases
+are retained. The native filter check rebuilds marker mappings twice and verifies
+that hidden animals stay hidden until explicitly enabled again.
 
 ## Server authority and offline backup
 
@@ -174,8 +185,8 @@ cause of a scene hitch.
 1. Open `projects/TRIFFID` in Unity **6000.3.7f1** on `experiments`.
 2. Wait for scripts to compile. Resolve any compiler errors before proceeding.
 3. Outside Play mode, select **AR2 > Experiments > Run Regression Checks**.
-4. Inspect the Console. Expected results are 57 passing core checks and
-   **47 passing Unity checks**, with no failing checks.
+4. Inspect the Console. Expected results are 63 passing core checks and
+   **48 passing Unity checks**, with no failing checks.
 
 The Unity checks create and remove temporary objects. They check signed
 offsets of -2, 0, and +2 metres, out-of-mesh searches, map translation and
@@ -266,6 +277,7 @@ Inspector settings, server version, feature IDs, and Console output.
 | Start a line or polygon, wait through a remote polling deadline, then finish or cancel it | Vertices and the draft stroke remain together. Synchronization resumes afterwards. |
 | Cancel a draft or remove a saved drawing through server refresh | The stroke and its owned vertices disappear together without leaving orphan dots. |
 | Draw with the reference MeshCollider disabled, then switch line/polygon tools | Pointer placement still hits the configured mesh. The previous valid drawing finishes before a new geometry type starts. |
+| Hide a POI class, save/edit GeoJSON or receive a server refresh, and introduce another POI of that class | Existing, rebuilt and incoming POIs remain hidden. Re-enabling that class restores its POIs without changing other filter choices. |
 
 Server edits and deletions do not require manual conflict resolution. For
 unresolved create identities or duplicate client IDs, select the object with

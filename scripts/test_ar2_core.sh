@@ -23,6 +23,7 @@ coordinate_dir="$repo_root/projects/TRIFFID/Assets/Custom Scripts/Coordinate Scr
     "$coordinate_dir/GeoJsonPolygonValidator.cs" \
     "$coordinate_dir/GeoJsonAtomicFile.cs" \
     "$coordinate_dir/GeoJsonPayloadParser.cs" \
+    "$coordinate_dir/GeoJsonVisibilityFilter.cs" \
     "$coordinate_dir/GeoJsonSyncCoordinator.cs" \
     "$repo_root/projects/TRIFFID/Assets/Editor/AR2CoreRegressionTests.cs" \
     "$repo_root/tests/headless/CoordinatorStubs.cs" \

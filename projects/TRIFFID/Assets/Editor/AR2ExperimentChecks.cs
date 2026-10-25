@@ -34,6 +34,7 @@ public static class AR2ExperimentChecks
         Check("pointer placement queries a disabled mesh collider", CheckPointerPlacement);
         Check("GeoJSON rebuilding preserves telemetry and drafts and releases saved stroke nodes", CheckRuntimeOwnership);
         Check("switching drawing tools finalizes the previous geometry and cancel removes draft vertices", CheckDrawingTools);
+        Check("POI filters survive marker rebuilding and apply to incoming markers", CheckFilterPersistence);
         Check("surface reactivation reuses its mesh and keeps raycasts available", CheckMeshCache);
         Check("invalid calibration scale is rejected", () =>
         {
@@ -360,6 +361,48 @@ public static class AR2ExperimentChecks
             UnityEngine.Object.DestroyImmediate(root);
             UnityEngine.Object.DestroyImmediate(material);
         }
+    }
+
+    private static void CheckFilterPersistence()
+    {
+        GameObject root = new GameObject("AR2 temporary POI filter check");
+        root.hideFlags = HideFlags.HideAndDontSave;
+        root.SetActive(false);
+        try
+        {
+            JsonSpawner spawner = root.AddComponent<JsonSpawner>();
+            spawner.mapTransform = root.transform;
+            spawner.FilterAnimals(false);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            Type mappingType = typeof(JsonSpawner).GetNestedType("NodeMapping", System.Reflection.BindingFlags.NonPublic);
+            var mappings = (System.Collections.IList)typeof(JsonSpawner).GetField("nodeMappings", flags).GetValue(spawner);
+            var apply = typeof(JsonSpawner).GetMethod("ApplyCurrentCategoryFilters", flags);
+            var clear = typeof(JsonSpawner).GetMethod("ClearSpawnedObjects", flags, null, new[] { typeof(bool) }, null);
+            for (int rebuild = 0; rebuild < 2; rebuild++)
+            {
+                GameObject animal = CreatePanelMarker(root, "animal_a").gameObject;
+                GameObject citizen = CreatePanelMarker(root, "citizen_b").gameObject;
+                foreach (var item in new[] { animal, citizen })
+                {
+                    string type = item == animal ? "animal" : "citizen";
+                    object mapping = Activator.CreateInstance(mappingType, true);
+                    mappingType.GetField("node").SetValue(mapping, item.transform);
+                    mappingType.GetField("parentFeature").SetValue(mapping, new Feature {
+                        id = item.GetComponent<PointData>().pointID, properties = new Properties { className = type },
+                        geometry = new Geometry { type = "Point" } });
+                    mappings.Add(mapping);
+                }
+                apply.Invoke(spawner, null);
+                Require(!animal.activeSelf && citizen.activeSelf, "Recreated POIs ignored the cached filter.");
+                if (rebuild == 0) clear.Invoke(spawner, new object[] { true });
+                else
+                {
+                    spawner.FilterAnimals(true);
+                    Require(animal.activeSelf && citizen.activeSelf, "Turning the filter back on did not restore the POI.");
+                }
+            }
+        }
+        finally { UnityEngine.Object.DestroyImmediate(root); }
     }
 
     private static void Check(string name, Action action)
