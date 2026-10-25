@@ -73,8 +73,9 @@ class and source, for example `ANIMAL` and `GROUND STATION`. Synchronization
 status stays in the synchronization state and diagnostics rather than appearing
 in the point information panel.
 
-Hover events and metadata changes for another marker no longer select it.
-The panel follows explicit marker selection and previous/next navigation.
+Controller/hand ray hover and explicit marker selection switch the panel to
+that marker, as do previous/next navigation. Metadata changes for another
+marker do not change selection.
 Server rebuilds retain the selected feature ID and its node ordinal, so
 reordered feature collections do not send the panel back to the first point.
 Removing a different marker preserves the current selection. If the selected
@@ -271,7 +272,8 @@ Inspector settings, server version, feature IDs, and Console output.
 | Return an invalid or incomplete response instead of a valid empty FeatureCollection | The local backup and visible map remain intact. |
 | Inspect a negative mesh height in the information panel | It displays a signed number such as `-0.40 m`, without a below-surface suffix. |
 | Disable the surface MeshCollider while manipulating the map, then query an annotation's height | A valid mesh intersection still resolves the height. The MeshCollider remains disabled after the query. |
-| Leave one marker selected while hovering others, receiving MQTT updates, or applying server refreshes | The panel retains the selected feature and node, unless that feature was removed. |
+| Hover another marker with a controller or hand ray | The panel switches to that marker without requiring a click or grab. |
+| Leave one marker selected while receiving MQTT updates or applying server refreshes | The panel retains the selected feature and node, unless that feature was removed. |
 | Inspect an estimated height and a pending marker | The estimate label appears below the number. Only the class and source are shown above the confidence bar. Missing height/elevation is `-`. |
 | Refresh server annotations while the latest UGV telemetry is unchanged | The same telemetry GameObject remains visible without waiting for the next MQTT poll. |
 | Start a line or polygon, wait through a remote polling deadline, then finish or cancel it | Vertices and the draft stroke remain together. Synchronization resumes afterwards. |

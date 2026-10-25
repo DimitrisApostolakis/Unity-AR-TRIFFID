@@ -218,12 +218,20 @@ public static class AR2ExperimentChecks
         GameObject root = new GameObject("AR2 temporary panel selection check");
         root.hideFlags = HideFlags.HideAndDontSave;
         PointInfoPanel panel = root.AddComponent<PointInfoPanel>();
+        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var disable = typeof(PointInfoPanel).GetMethod("OnDisable", flags);
         try
         {
+            // Invoke lifecycle hooks explicitly for this Edit-mode menu check.
+            disable.Invoke(panel, null);
+            typeof(PointInfoPanel).GetMethod("OnEnable", flags).Invoke(panel, null);
             PointData a = CreatePanelMarker(root, "a"), b = CreatePanelMarker(root, "b");
             panel.RegisterMarker(a, null); panel.RegisterMarker(b, null); panel.OnMarkerSelected(b);
-            MarkerEventManager.RaiseMarkerHovered(a); panel.LiveUpdateIfCurrent(a);
-            Require(panel.IsObservingMarker(b), "Background update changed the selected point.");
+            MarkerEventManager.RaiseMarkerHovered(a);
+            Require(panel.IsObservingMarker(a), "Ray hover did not select the hovered point.");
+            panel.LiveUpdateIfCurrent(b);
+            Require(panel.IsObservingMarker(a), "Background update changed the hovered point.");
+            panel.OnMarkerSelected(b);
             panel.BeginMarkerRefresh(); panel.ClearMarkers();
             PointData newB = CreatePanelMarker(root, "b"), newA = CreatePanelMarker(root, "a");
             panel.RegisterMarker(newB, null); panel.RegisterMarker(newA, null); panel.EndMarkerRefresh();
@@ -231,7 +239,11 @@ public static class AR2ExperimentChecks
             panel.BeginMarkerRefresh(); panel.ClearMarkers(); panel.RegisterMarker(newA, null); panel.EndMarkerRefresh();
             Require(!panel.IsObservingMarker(newA), "Deleting the selected point switched to an unrelated point.");
         }
-        finally { UnityEngine.Object.DestroyImmediate(root); }
+        finally
+        {
+            disable.Invoke(panel, null);
+            UnityEngine.Object.DestroyImmediate(root);
+        }
     }
 
     private static PointData CreatePanelMarker(GameObject parent, string id)

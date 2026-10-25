@@ -171,12 +171,14 @@ public class PointInfoPanel : MonoBehaviour
 
     private void OnEnable()
     {
+        MarkerEventManager.MarkerHovered += HandleExternalMarkerFocus;
         MarkerEventManager.MarkerSelected += HandleExternalMarkerFocus;
         RefreshPanel();
     }
 
     private void OnDisable()
     {
+        MarkerEventManager.MarkerHovered -= HandleExternalMarkerFocus;
         MarkerEventManager.MarkerSelected -= HandleExternalMarkerFocus;
         UnbindObservedMarker();
 

@@ -46,14 +46,14 @@ public static class InteractionRegressionTests
             Physics.hits=new[] { new RaycastHit { collider=surface,distance=2,point=new Vector3(0,5,0) }, new RaycastHit { collider=marker,distance=1,point=new Vector3(0,9,0) } };
             Vector3 hit; Check(Query(null,out hit) && hit.y==5);
         });
-        Test("hover and unrelated metadata updates cannot change the selected marker",()=>
+        Test("ray hover selects its marker while unrelated metadata updates cannot change it",()=>
         {
             using(PanelFixture f=new PanelFixture())
             {
                 PointData a=f.Register("a"), b=f.Register("b"); f.panel.OnMarkerSelected(b);
-                MarkerEventManager.RaiseMarkerHovered(a); a.NotifyDataChanged(); f.panel.LiveUpdateIfCurrent(a);
-                Check(f.panel.IsObservingMarker(b));
-                MarkerEventManager.RaiseMarkerSelected(a); Check(f.panel.IsObservingMarker(a));
+                MarkerEventManager.RaiseMarkerHovered(a); Check(f.panel.IsObservingMarker(a));
+                b.NotifyDataChanged(); f.panel.LiveUpdateIfCurrent(b); Check(f.panel.IsObservingMarker(a));
+                MarkerEventManager.RaiseMarkerSelected(b); Check(f.panel.IsObservingMarker(b));
             }
         });
         Test("next and previous remain explicit selection actions",()=>
