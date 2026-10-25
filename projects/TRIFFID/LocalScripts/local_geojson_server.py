@@ -560,6 +560,8 @@ class GeoJsonStore:
 
 
 class Handler(BaseHTTPRequestHandler):
+    audit_log: Optional[str] = None
+    audit_lock = threading.Lock()
     store: GeoJsonStore = None
 
     def do_GET(self) -> None:
@@ -675,11 +677,22 @@ class Handler(BaseHTTPRequestHandler):
 
         raw = self.rfile.read(length) if length > 0 else b"{}"
         try:
-            return json.loads(raw.decode("utf-8"))
+            body = json.loads(raw.decode("utf-8"))
+            self._audit_body = body
+            return body
         except Exception:
             return None
 
     def _json(self, status: int, payload: Dict[str, Any]) -> None:
+        if self.audit_log:
+            record = {"time_ns": time.time_ns(), "method": self.command,
+                      "path": urlparse(self.path).path, "status": status,
+                      "actor": self.headers.get("X-AR2-Test", "client"),
+                      "user_agent": self.headers.get("User-Agent", ""),
+                      "body": getattr(self, "_audit_body", None)}
+            with self.audit_lock:
+                with open(self.audit_log, "a", encoding="utf-8") as audit:
+                    audit.write(json.dumps(record, ensure_ascii=False) + "\n")
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -697,6 +710,7 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", default=8080, type=int, help="Bind port")
     parser.add_argument("--db", default="local_features.json", help="Path to JSON db file")
+    parser.add_argument("--audit-log", help="Optional JSONL request log for the offline sync test")
     parser.add_argument("--lat", type=float, default=37.9603098916767, help="Initial MQTT latitude")
     parser.add_argument("--lon", type=float, default=23.708289295677133, help="Initial MQTT longitude")
     parser.add_argument("--auto-move-after", type=float, default=-1.0, help="Start moving automatically after N seconds; negative disables")
@@ -735,6 +749,9 @@ def main() -> int:
             store._write(db)
 
     Handler.store = store
+    Handler.audit_log = os.path.abspath(args.audit_log) if args.audit_log else None
+    if Handler.audit_log:
+        os.makedirs(os.path.dirname(Handler.audit_log), exist_ok=True)
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Local GeoJSON API running on http://{args.host}:{args.port}{API_BASE}")

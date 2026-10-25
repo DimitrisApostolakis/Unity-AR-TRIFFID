@@ -109,6 +109,18 @@ GET    /wp-json/mqtt/v1/latest
 PATCH  /wp-json/mqtt/v1/latest
 ```
 
+To verify a deletion and creation already saved in Unity during an outage,
+stop the separate local server, keep Unity in Play mode using localhost, and run:
+
+```bash
+python scripts/test_ar2_offline_sync.py --resume
+```
+
+Omit `--resume` for a fresh guided outage/reconnection test. The script backs
+up and uses the existing database, controls its own server process, and checks
+Unity's saved outbox, delivered data, observer payloads and server restart.
+See [AR2 correctness checks](docs/AR2_EXPERIMENT_CHECKS.md) for setup and results.
+
 ### 4. Open a demo scene
 
 In Unity, open one of the demo scenes under:
@@ -309,3 +321,4 @@ The system is intended to support experimentation with:
 * XR interfaces for operational maps
 * human-robot interaction interfaces
 * disaster-scene visualization
+

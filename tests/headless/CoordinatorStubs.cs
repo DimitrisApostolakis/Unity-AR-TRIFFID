@@ -54,12 +54,13 @@ public sealed class JsonSpawner
 
 public sealed class GeoJsonApiManager
 {
-    public sealed class ObserverSyncStatus { public int fe_updated=1; public int mobile_updated; }
+    public sealed class ObserverSyncStatus { public int fe_updated=1; public int mobile_updated,ar_updated; }
     public List<Feature> server=new List<Feature>();
     public bool offline,holdWrites,holdFetch,loseNextCreateReply,malformedFetch;
     public ObserverSyncStatus status=new ObserverSyncStatus();
     public int createCount,updateCount,deleteCount,fetchCount;
     public bool failUpdates;
+    public int localNotifications,remoteAcknowledgements;
     private Action heldWrite;
     private Action heldFetch;
     public bool HasHeldWrite { get { return heldWrite!=null; } }
@@ -99,6 +100,18 @@ public sealed class GeoJsonApiManager
     public void AbortOperation(string operationId) { }
     public void FetchLatestMqttStatus(Action<bool,string,MqttLatestResponse> callback) { callback(false,"No telemetry fixture",null); }
     public void PatchCurrentStatusFlag(Action<bool,string,object> callback) { callback(true,"OK",null); }
-    public void PatchCurrentStatusField(string field,int value,Action<bool,string,ObserverSyncStatus> callback) { callback(true,"OK",new ObserverSyncStatus()); }
+    public void PatchCurrentStatusField(string field,int value,Action<bool,string,ObserverSyncStatus> callback)
+    {
+        remoteAcknowledgements++;
+        if(field=="ar_updated") status.ar_updated=value;
+        if(field=="fe_updated") status.fe_updated=value;
+        if(field=="mobile_updated") status.mobile_updated=value;
+        callback(true,"OK",status);
+    }
+    public void PatchCurrentStatusFlags(int fe,int mobile,int ar,Action<bool,string,ObserverSyncStatus> callback)
+    {
+        localNotifications++; status.fe_updated=fe; status.mobile_updated=mobile; status.ar_updated=ar;
+        callback(true,"OK",status);
+    }
     public void GetCurrentStatus(Action<bool,string,ObserverSyncStatus> callback) { callback(!offline,offline?"Offline":"OK",offline?null:status); }
 }

@@ -219,6 +219,44 @@ public static class CoordinatorRegressionTests
                 Check(f.spawner.respawns==1 && f.api.fetchCount==1);
             }
         });
+        Test("offline delete plus create survive restart and notify only after confirmed writes", () =>
+        {
+            Feature original=Point("delete_me",1);
+            using(Fixture f=new Fixture(Clean(original),original))
+            {
+                f.api.offline=true;
+                Root local=f.Load(); GeoJsonOutbox.RecordDeletion(local,local.features[0]); local.features.Clear();
+                local.features.Add(Point("offline_new",2)); GeoJsonOutbox.CaptureChanges(local,DateTime.UtcNow);
+                GeoJsonAtomicFile.Write(f.spawner.path,JsonConvert.SerializeObject(local)); f.spawner.LocalPersistenceVersion++;
+                f.Steps(20); Check(f.Load().syncState.pending.Count==2 && f.api.createCount==0 && f.api.deleteCount==0 && f.api.localNotifications==0);
+                f.RestartWorker(); f.Steps(10); f.api.offline=false;
+                f.Until(()=>f.Load().syncState.pending.Count==0 && f.api.localNotifications==2);
+                Check(f.api.createCount==1 && f.api.deleteCount==1 && f.api.server.Count==1 && f.Load().features.Count==1);
+                Check(f.api.status.ar_updated==1 && f.api.status.fe_updated==0 && f.api.status.mobile_updated==0);
+                f.Steps(50); f.RestartWorker(); f.worker.RefreshFromServer(); f.Steps(20);
+                Check(f.api.createCount==1 && f.api.deleteCount==1 && f.api.localNotifications==2);
+            }
+        });
+        Test("applying remote features resets only AR's default observer flag", () =>
+        {
+            Feature original=Point("a",1);
+            using(Fixture f=new Fixture(Clean(original),original,Point("incoming",2)))
+            {
+                f.api.status.fe_updated=1; f.api.status.mobile_updated=1; f.api.status.ar_updated=1;
+                f.worker.RefreshFromServer(); f.Until(()=>f.api.remoteAcknowledgements==1);
+                Check(f.api.status.fe_updated==1 && f.api.status.mobile_updated==1 && f.api.status.ar_updated==0 && f.api.localNotifications==0);
+                f.worker.RefreshFromServer(); f.Steps(20); Check(f.api.remoteAcknowledgements==1);
+            }
+        });
+        Test("an unchanged fetch does not clear AR's own published notification", () =>
+        {
+            Feature original=Point("a",1);
+            using(Fixture f=new Fixture(Clean(original),original))
+            {
+                f.api.status.fe_updated=0; f.api.status.ar_updated=1; f.worker.RefreshFromServer(); f.Steps(20);
+                Check(f.api.remoteAcknowledgements==0 && f.api.localNotifications==0 && f.api.status.ar_updated==1);
+            }
+        });
         Console.WriteLine("COORDINATOR RESULT: "+passed+" passed, "+failed+" failed");
         return failed==0?0:1;
     }

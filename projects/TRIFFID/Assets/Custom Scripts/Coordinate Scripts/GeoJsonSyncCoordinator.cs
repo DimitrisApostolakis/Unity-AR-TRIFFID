@@ -301,7 +301,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
                     ", local=" + local.features.Count + ", removed=" + previousIds.Count +
                     ", pending=" + local.syncState.pending.Count + ". Server changes and deletions take priority.");
             }
-            if (merged && resetArUpdatedAfterRemoteRefresh) yield return NotifyServerOfRemoteRefresh();
+            if (contentChanged && resetArUpdatedAfterRemoteRefresh) yield return NotifyServerOfRemoteRefresh();
             if (contentChanged || IsLocalBusy()) continue;
 
             if (!Read(out local)) continue;
@@ -491,7 +491,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
     private IEnumerator NotifyServerOfLocalChange()
     {
         Response result = new Response();
-        apiManager.PatchCurrentStatusFlag((ok, message, ignored) =>
+        apiManager.PatchCurrentStatusFlags(0, 0, 1, (ok, message, ignored) =>
         { result.ok = ok; result.message = message; result.completed = true; });
         yield return Wait(result, null);
         if (!result.ok && verboseLogs) Debug.LogWarning("[GeoJsonSyncCoordinator] Feature delivered, observer-status notification failed: " + result.message);

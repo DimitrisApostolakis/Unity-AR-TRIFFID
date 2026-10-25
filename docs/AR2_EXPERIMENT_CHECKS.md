@@ -38,7 +38,7 @@ If these dependencies are not in their usual locations, set `AR2_MONO`,
 `AR2_CSC`, and `AR2_NEWTONSOFT_DLL`. A private Mono installation can also use
 `AR2_MONO_CONFIG`, `MONO_PATH`, and `LD_LIBRARY_PATH`.
 
-The verified result is **63 core checks, 19 coordinator checks, 12 mesh
+The verified result is **63 core checks, 22 coordinator checks, 12 mesh
 loader checks, and 20 interaction checks passed**. The mesh checks compile the production loader with
 engine test doubles and exercise cache reuse, invalidation, explicit reload,
 collider bindings, and runtime/imported-mesh ownership.
@@ -131,6 +131,69 @@ remote polling deadline even if observer-status flags are zero. Local annotation
 creates that have never reached the server stay queued for upload. Creates
 whose outcome or server identity is uncertain retain their reconciliation
 state so a lost response does not cause duplicate uploads.
+
+## Python test for an offline deletion and creation
+
+The test uses the existing local server/database and reads Unity's actual
+`Coordinates/GeoJSON_updated.json`. It never writes Unity's snapshot or
+simulates the synchronization algorithm in Python. Use one Unity AR instance
+with **Use Localhost** enabled, and finish/cancel any drawing before testing.
+Stop the separate local server process first; the script controls only the
+server process it starts and refuses to kill an existing listener.
+
+For the outage already performed (delete one synchronized item and create a
+new POI while the server is closed), keep or restart Unity in Play mode with
+the server still closed, then run from the repository root:
+
+```bat
+python scripts/test_ar2_offline_sync.py --resume
+```
+
+To perform a fresh guided test after pending edits have synchronized:
+
+```bat
+python scripts/test_ar2_offline_sync.py
+```
+
+The guided mode seeds one identifiable animal, waits until Unity has fetched
+and synchronized it, stops the server, and asks you to delete it and create
+a new POI in Unity. Press Enter when both edits have been saved. The script
+verifies the durable delete/create outbox, restarts the same database, waits
+for delivery, checks local/server content and identity, and restarts the
+server once more to verify persistence without duplicate creates.
+
+It also audits observer requests against the original defaults:
+
+| Event | `fe_updated` | `mobile_updated` | `ar_updated` |
+| --- | --- | --- | --- |
+| Confirmed AR feature write | 0 | 0 | 1 |
+| Applied remote refresh | Unchanged | Unchanged | 0 |
+
+AR publishes after a confirmed server write, not after an offline save or
+an unchanged poll. A delete and a create normally produce two publish
+requests because they are two delivered changes. Repeated unchanged fetches
+do not announce new AR changes. Shared flags remain the original protocol,
+not independent acknowledgements for every listening client.
+
+The script saves before/offline/after JSON, request audit, server log and
+`report.json` under `projects/TRIFFID/Logs/AR2OfflineSync/<run>/`. It uses the
+existing database directly after backing it up there, so successful edits
+persist in the normal local database. After PASS it leaves its server running
+until Ctrl+C. Use `--exit-after-test` to stop it immediately, `--timeout 240`
+for slower polling/retries, or `--snapshot` / `--db` for nondefault paths.
+`--rewrite-create-ids` additionally tests server-assigned identifiers.
+Python 3.9+ is sufficient; no external packages are needed.
+
+The eight Python checker tests passed, including actual local HTTP CRUD,
+request auditing and server restart. Run them with:
+
+```bash
+python -m unittest discover -s tests/python -p 'test_ar2_offline_sync.py' -v
+```
+
+Those checks validate the runner, not a live Unity session. The end-to-end
+run still requires Unity locally. Rendered visibility and controller/hand
+interaction are visual checks; data/outbox/API/observer results are automatic.
 
 The Unity context menu **Sync/Refresh From Server** now immediately logs its
 request and warns if the component is disabled. With **Verbose Logs** enabled,
