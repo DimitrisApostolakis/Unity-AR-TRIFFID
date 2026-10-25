@@ -4,6 +4,10 @@ The `experiments` branch contains geographic placement, surface-height,
 polygon-validation, and persistent synchronization fixes. Run the Unity checks
 and the application scenarios below before collecting paper measurements.
 
+See the [paper evaluation protocol](PAPER_EVALUATION_PROTOCOL.md) for the
+measurement procedures, fault oracles, acceptance budgets and remaining inputs.
+Regression checks and publication measurements are separate evidence.
+
 ## Changes
 
 - A failed surface search keeps the supplied longitude and latitude. There is
