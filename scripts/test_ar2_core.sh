@@ -37,10 +37,14 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
     "$repo_root/tests/headless/MeshLoaderRegressionTests.cs"
 "$mono_bin" "${mono_options[@]}" "$build_dir/AR2.MeshTests.exe"
 
-"${compiler[@]}" -langversion:latest -warnaserror -out:"$build_dir/AR2.InteractionTests.exe" \
+# Keep runtime code and its checks in separate assemblies, as Unity does for
+# Assets/Editor, so inaccessible runtime helpers fail this build as well.
+"${compiler[@]}" -langversion:latest -warnaserror -target:library -out:"$build_dir/AR2.InteractionRuntime.dll" \
     "$coordinate_dir/GeographicSurfaceQuery.cs" \
     "$repo_root/projects/TRIFFID/Assets/Custom Scripts/Icon Scripts/PointInfoPanel.cs" \
     "$repo_root/projects/TRIFFID/Assets/Custom Scripts/Icon Scripts/MarkerEventManager.cs" \
-    "$repo_root/tests/headless/InteractionStubs.cs" \
+    "$repo_root/tests/headless/InteractionStubs.cs"
+"${compiler[@]}" -langversion:latest -warnaserror -out:"$build_dir/AR2.InteractionTests.exe" \
+    -r:"$build_dir/AR2.InteractionRuntime.dll" \
     "$repo_root/tests/headless/InteractionRegressionTests.cs"
 "$mono_bin" "${mono_options[@]}" "$build_dir/AR2.InteractionTests.exe"

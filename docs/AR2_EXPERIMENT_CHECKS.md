@@ -49,7 +49,9 @@ transport, and local-file ownership. They do not execute Unity physics,
 the complete application, or a real server.
 
 The interaction checks compile the production information panel, marker event
-manager, and surface query with engine doubles. They verify collider-state
+manager, and surface query with engine doubles in a runtime library, then compile
+the checks in a separate assembly to catch Editor/runtime visibility mistakes.
+They verify collider-state
 restoration on hits, misses, invalid rays and exceptions, stable panel selection,
 explicit navigation, feature/node matching across server rebuilds, deletion,
 and displayed height/status strings. They do not validate native PhysX queries,

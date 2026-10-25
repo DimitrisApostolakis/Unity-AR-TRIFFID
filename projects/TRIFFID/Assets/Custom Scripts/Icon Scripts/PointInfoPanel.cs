@@ -663,7 +663,7 @@ public class PointInfoPanel : MonoBehaviour
             canvasGroup.alpha = 1f;
     }
 
-    internal bool IsObservingMarker(PointData data)
+    public bool IsObservingMarker(PointData data)
     {
         return observedMarker == data;
     }
