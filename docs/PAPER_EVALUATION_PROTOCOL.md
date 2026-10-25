@@ -392,7 +392,7 @@ these are locked, report scaling curves rather than claiming an operational pass
 
 | Area | Existing evidence | Still needed |
 | --- | --- | --- |
-| Arithmetic | Production GeoUtils implementation | Site-specific raw-output runner, independent residual/reference checks, metadata |
+| Arithmetic | Production GeoUtils; E1 native/headless collector, PROJ reference and raw-output metadata | Native Unity confirmation and final tolerance/domain lock |
 | Manipulation/height | Native synthetic surface checks and engine-double regressions | Native batch transformation measurements, full-domain samples, multilevel fixtures, drift-cycle/network counts |
 | Sync | Core/outbox/coordinator regressions; guided real local HTTP outage test | Two actors, programmable fault injection, process-kill trials, scenario oracle files and timing/notification logs |
 | Polygons | Validator orientation/intersection/degeneracy/nonfinite/metadata regressions | Published fixture table and draft/UI rejection checks |
@@ -441,3 +441,10 @@ freeze its design before participant recruitment/data collection.
 
 These references inform measurement/reporting; they do not validate this system
 or substitute for locking the experiment-specific decisions above.
+
+## E1 collector implementation
+
+The [numerical collector guide](NUMERICAL_EXPERIMENT.md) documents the implemented
+C# collector, independent PROJ reference, native Unity and headless entry points,
+sampling and raw output. This completes the E1 collection tool; a native Unity
+confirmation and independent geographic reference acquisition remain separate.
