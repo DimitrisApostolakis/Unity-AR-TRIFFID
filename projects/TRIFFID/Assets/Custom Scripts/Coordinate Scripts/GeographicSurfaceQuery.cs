@@ -26,10 +26,25 @@ public static class GeographicSurfaceQuery
     {
         surface = marker;
         if (up.sqrMagnitude < 0.99f || !Finite(startDistance) || !Finite(rayDistance) || rayDistance <= 0f) return false;
+        if (target != null && !target.gameObject.activeInHierarchy) return false;
+        bool temporarilyEnabled = target != null && !target.enabled;
         // The selected reference is the first configured surface seen from ENU
         // above. A hit above the marker is valid and yields a negative offset.
-        if (Cast(target, marker + up * startDistance, -up, rayDistance, mask, out surface)) return true;
-        return Cast(target, marker - up * startDistance, up, rayDistance, mask, out surface);
+        try
+        {
+            // Map manipulation may disable interaction collisions. Reuse the
+            // configured collider for this synchronous query without changing
+            // its mesh or activating its loading behaviour. Restore before any
+            // frame/physics step can observe a changed interaction setting.
+            if (temporarilyEnabled) target.enabled = true;
+            Physics.SyncTransforms();
+            if (Cast(target, marker + up * startDistance, -up, rayDistance, mask, out surface)) return true;
+            return Cast(target, marker - up * startDistance, up, rayDistance, mask, out surface);
+        }
+        finally
+        {
+            if (temporarilyEnabled && target != null) target.enabled = false;
+        }
     }
 
     private static bool Cast(Collider target, Vector3 origin, Vector3 direction, float distance, LayerMask mask, out Vector3 surface)

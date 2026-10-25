@@ -330,14 +330,14 @@ public class JsonSpawner : MonoBehaviour
             if (!TryPreflightSpawnInputs(out TransformConfig loadedTransform, out Root loadedRoot, out string loadPath))
                 return;
 
+            if (infoPanel != null) infoPanel.BeginMarkerRefresh();
+            try
+            {
             ClearSpawnedObjects();
             transformData = loadedTransform;
             transformLoadWarningShown = false;
             currentRootData = loadedRoot;
             GeoJsonOutbox.Initialize(currentRootData, true);
-
-            try
-            {
 
             int colorIndex = 0;
             bool hasColorPalette = colorPalette != null && colorPalette.Count > 0;
@@ -376,12 +376,14 @@ public class JsonSpawner : MonoBehaviour
             ApplyColliderStateToSpawnedObjects(collidersDesiredActive, false);
             UpdateSyncStatusLabels();
 
-            if (infoPanel != null && infoPanel.gameObject.activeSelf)
-                infoPanel.ShowFirst();
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[JsonSpawner] Failed to parse GeoJSON file '{loadPath}': {ex.Message}", this);
+            }
+            finally
+            {
+                if (infoPanel != null) infoPanel.EndMarkerRefresh();
             }
         }
         finally
@@ -2155,7 +2157,7 @@ public class JsonSpawner : MonoBehaviour
         else if (surfaceSnapTargetObject != null)
             surfaceSnapTargetObject.SendMessage("SyncToMap", SendMessageOptions.DontRequireReceiver);
 
-        Physics.SyncTransforms();
+        // The query synchronizes physics after restoring any disabled collider.
     }
 
     private void SpawnLinePath(JArray lineToken, Feature feature, Color color, Transform customParent)

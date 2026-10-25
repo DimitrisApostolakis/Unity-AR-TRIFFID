@@ -21,11 +21,16 @@ public static class AR2ExperimentChecks
                 float offset = height;
                 Check("surface offset " + offset + " m, display configuration " + index,
                     () => CheckSurface(scales[index], index, offset, false));
+                Check("disabled-collider surface offset " + offset + " m, display configuration " + index,
+                    () => CheckSurface(scales[index], index, offset, false, true));
             }
             int outsideIndex = configuration;
             Check("out-of-mesh query stays unresolved, display configuration " + configuration,
                 () => CheckSurface(scales[outsideIndex], outsideIndex, 0f, true));
+            Check("disabled-collider miss restores state, display configuration " + configuration,
+                () => CheckSurface(scales[outsideIndex], outsideIndex, 0f, true, true));
         }
+        Check("panel selection survives background updates and marker rebuilding", CheckPanelSelection);
         Check("surface reactivation reuses its mesh and keeps raycasts available", CheckMeshCache);
         Check("invalid calibration scale is rejected", () =>
         {
@@ -144,7 +149,7 @@ public static class AR2ExperimentChecks
         }
     }
 
-    private static void CheckSurface(Vector3 scale, int configuration, float height, bool outside)
+    private static void CheckSurface(Vector3 scale, int configuration, float height, bool outside, bool disabled = false)
     {
         GameObject parent = new GameObject("AR2 temporary test hierarchy");
         parent.hideFlags = HideFlags.HideAndDontSave;
@@ -187,7 +192,9 @@ public static class AR2ExperimentChecks
             Vector3 markerLocal = localUp * height + (outside ? east * 1000f : Vector3.zero);
             Vector3 marker = map.transform.TransformPoint(markerLocal);
             Vector3 hit;
+            collider.enabled = !disabled;
             bool found = GeographicSurfaceQuery.TryHit(collider, marker, worldUp, 25f * units, 100f * units, ~0, out hit);
+            Require(collider.enabled == !disabled, "Surface query changed the interaction collider state.");
             if (outside) { Require(!found, "An out-of-mesh point was relocated onto the mesh."); return; }
             Require(found, "No reference surface intersection.");
             Vector3 localDelta = map.transform.InverseTransformPoint(marker) - map.transform.InverseTransformPoint(hit);
@@ -200,6 +207,38 @@ public static class AR2ExperimentChecks
             UnityEngine.Object.DestroyImmediate(parent);
             UnityEngine.Object.DestroyImmediate(mesh);
         }
+    }
+
+    private static void CheckPanelSelection()
+    {
+        GameObject root = new GameObject("AR2 temporary panel selection check");
+        root.hideFlags = HideFlags.HideAndDontSave;
+        PointInfoPanel panel = root.AddComponent<PointInfoPanel>();
+        try
+        {
+            PointData a = CreatePanelMarker(root, "a"), b = CreatePanelMarker(root, "b");
+            panel.RegisterMarker(a, null); panel.RegisterMarker(b, null); panel.OnMarkerSelected(b);
+            MarkerEventManager.RaiseMarkerHovered(a); panel.LiveUpdateIfCurrent(a);
+            Require(panel.IsObservingMarker(b), "Background update changed the selected point.");
+            panel.BeginMarkerRefresh(); panel.ClearMarkers();
+            PointData newB = CreatePanelMarker(root, "b"), newA = CreatePanelMarker(root, "a");
+            panel.RegisterMarker(newB, null); panel.RegisterMarker(newA, null); panel.EndMarkerRefresh();
+            Require(panel.IsObservingMarker(newB), "Rebuilding markers lost the selected feature.");
+            panel.BeginMarkerRefresh(); panel.ClearMarkers(); panel.RegisterMarker(newA, null); panel.EndMarkerRefresh();
+            Require(!panel.IsObservingMarker(newA), "Deleting the selected point switched to an unrelated point.");
+        }
+        finally { UnityEngine.Object.DestroyImmediate(root); }
+    }
+
+    private static PointData CreatePanelMarker(GameObject parent, string id)
+    {
+        GameObject marker = new GameObject("AR2 temporary panel marker " + id);
+        marker.hideFlags = HideFlags.HideAndDontSave;
+        marker.transform.SetParent(parent.transform, false);
+        PointData data = marker.AddComponent<PointData>();
+        data.pointID = id;
+        data.pointClass = "animal";
+        return data;
     }
 
     private static void Check(string name, Action action)

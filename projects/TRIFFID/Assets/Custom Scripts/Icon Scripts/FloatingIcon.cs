@@ -94,9 +94,6 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
     public void OnHoverEntered(HoverEnterEventArgs args)
     {
         FocusMarker(MarkerFocusReason.Hover);
-
-        if (infoPanel != null && myPointData != null)
-            infoPanel.OnMarkerSelected(myPointData);
     }
 
     public void OnSelectEntered(SelectEnterEventArgs args)
@@ -276,3 +273,4 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
             transform.LookAt(Camera.main.transform);
     }
 }
+

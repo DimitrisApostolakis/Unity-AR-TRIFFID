@@ -36,3 +36,11 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
     "$repo_root/tests/headless/MeshLoaderStubs.cs" \
     "$repo_root/tests/headless/MeshLoaderRegressionTests.cs"
 "$mono_bin" "${mono_options[@]}" "$build_dir/AR2.MeshTests.exe"
+
+"${compiler[@]}" -langversion:latest -warnaserror -out:"$build_dir/AR2.InteractionTests.exe" \
+    "$coordinate_dir/GeographicSurfaceQuery.cs" \
+    "$repo_root/projects/TRIFFID/Assets/Custom Scripts/Icon Scripts/PointInfoPanel.cs" \
+    "$repo_root/projects/TRIFFID/Assets/Custom Scripts/Icon Scripts/MarkerEventManager.cs" \
+    "$repo_root/tests/headless/InteractionStubs.cs" \
+    "$repo_root/tests/headless/InteractionRegressionTests.cs"
+"$mono_bin" "${mono_options[@]}" "$build_dir/AR2.InteractionTests.exe"

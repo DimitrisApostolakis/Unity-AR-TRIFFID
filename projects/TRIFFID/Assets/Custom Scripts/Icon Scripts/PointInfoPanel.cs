@@ -32,7 +32,7 @@ public class PointInfoPanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI longValueText;
     [Tooltip("Text displaying the selected marker class.")]
     [SerializeField] private TextMeshProUGUI classText;
-    [Tooltip("Text displaying the selected marker source.")]
+    [Tooltip("Text displaying synchronization status followed by the selected marker source, below its class.")]
     [SerializeField] private TextMeshProUGUI sourceText;
 
     [Header("Category Icons")]
@@ -101,8 +101,12 @@ public class PointInfoPanel : MonoBehaviour
     private readonly List<int> markerOrder = new List<int>();
     private readonly Dictionary<int, MarkerLifecycleRelay> markerRelays = new Dictionary<int, MarkerLifecycleRelay>();
 
-    private int currentIndex = 0;
+    private int currentIndex = -1;
     private PointData observedMarker;
+    private bool markerRefreshInProgress;
+    private bool hasPresentedMarker;
+    private string refreshFeatureId;
+    private int refreshFeatureNodeIndex;
 
     private Coroutine fadeCoroutine;
     private Coroutine sliderCoroutine;
@@ -167,13 +171,12 @@ public class PointInfoPanel : MonoBehaviour
 
     private void OnEnable()
     {
-        MarkerEventManager.MarkerHovered += HandleExternalMarkerFocus;
         MarkerEventManager.MarkerSelected += HandleExternalMarkerFocus;
+        RefreshPanel();
     }
 
     private void OnDisable()
     {
-        MarkerEventManager.MarkerHovered -= HandleExternalMarkerFocus;
         MarkerEventManager.MarkerSelected -= HandleExternalMarkerFocus;
         UnbindObservedMarker();
 
@@ -219,7 +222,7 @@ public class PointInfoPanel : MonoBehaviour
         RegisterLifecycleRelay(data, id);
         Debug.Log($"[Panel] Registered: {data.pointClass} / {data.pointID} - Total: {markerOrder.Count}");
 
-        if (wasEmpty)
+        if (wasEmpty && !markerRefreshInProgress && !hasPresentedMarker)
         {
             currentIndex = 0;
             RefreshPanel();
@@ -241,6 +244,7 @@ public class PointInfoPanel : MonoBehaviour
 
     public void ClearMarkers()
     {
+        UnbindObservedMarker();
         foreach (int id in markerOrder)
         {
             if (markerEntries.TryGetValue(id, out MarkerEntry entry) && entry.pulse != null && entry.data != null)
@@ -256,9 +260,47 @@ public class PointInfoPanel : MonoBehaviour
         markerRelays.Clear();
         markerEntries.Clear();
         markerOrder.Clear();
-        currentIndex = 0;
+        currentIndex = -1;
 
         CancelFadeAndRestoreVisibility();
+        if (!markerRefreshInProgress) RefreshPanel();
+    }
+
+    // A server refresh rebuilds runtime objects. Remember the selected feature
+    // and its node ordinal, rather than the instance ID or collection index.
+    public void BeginMarkerRefresh()
+    {
+        markerRefreshInProgress = true;
+        refreshFeatureId = null;
+        refreshFeatureNodeIndex = 0;
+        if (!TryGetEntryAtIndex(currentIndex, out MarkerEntry selected) || selected.data == null) return;
+        refreshFeatureId = selected.data.pointID;
+        for (int i = 0; i < currentIndex; i++)
+            if (TryGetEntryAtIndex(i, out MarkerEntry entry) && SameFeature(entry.data, refreshFeatureId))
+                refreshFeatureNodeIndex++;
+    }
+
+    public void EndMarkerRefresh()
+    {
+        markerRefreshInProgress = false;
+        currentIndex = -1;
+        if (refreshFeatureId != null)
+        {
+            int ordinal = 0;
+            for (int i = 0; i < markerOrder.Count; i++)
+            {
+                if (!TryGetEntryAtIndex(i, out MarkerEntry entry) || !SameFeature(entry.data, refreshFeatureId)) continue;
+                if (ordinal++ == refreshFeatureNodeIndex) { currentIndex = i; break; }
+            }
+        }
+        else if (!hasPresentedMarker && markerOrder.Count > 0) currentIndex = 0;
+        refreshFeatureId = null;
+        RefreshPanel();
+    }
+
+    private static bool SameFeature(PointData marker, string id)
+    {
+        return marker != null && string.Equals(marker.pointID, id, System.StringComparison.OrdinalIgnoreCase);
     }
 
     public void ShowFirst()
@@ -286,10 +328,7 @@ public class PointInfoPanel : MonoBehaviour
                 RemoveMarkerById(id, false);
         }
 
-        if (markerOrder.Count == 0)
-            currentIndex = 0;
-        else
-            currentIndex = Mathf.Clamp(currentIndex, 0, markerOrder.Count - 1);
+        if (markerOrder.Count == 0) currentIndex = -1;
     }
 
     public void ShowNext()
@@ -322,7 +361,7 @@ public class PointInfoPanel : MonoBehaviour
     {
         if (markerOrder.Count == 0) return;
         StopCurrentPulse();
-        currentIndex = (currentIndex - 1 + markerOrder.Count) % markerOrder.Count;
+        currentIndex = currentIndex < 0 ? markerOrder.Count - 1 : (currentIndex - 1 + markerOrder.Count) % markerOrder.Count;
 
         int attempts = 0;
         while (attempts < markerOrder.Count)
@@ -433,16 +472,16 @@ public class PointInfoPanel : MonoBehaviour
 
     private void RefreshPanel()
     {
-        if (!gameObject.activeInHierarchy) return;
+        if (!gameObject.activeInHierarchy || markerRefreshInProgress) return;
 
-        if (markerOrder.Count == 0)
+        if (markerOrder.Count == 0 || currentIndex < 0)
         {
             UnbindObservedMarker();
 
             if (classText         != null) classText.text         = "-";
             if (idValueText       != null) idValueText.text       = "-";
             if (altitudeValueText != null) altitudeValueText.text = "-";
-            if (sourceText        != null) sourceText.text        = "-";
+            if (sourceText        != null) sourceText.text        = string.Empty;
             if (latValueText      != null) latValueText.text      = "-";
             if (longValueText     != null) longValueText.text     = "-";
             if (percentageText    != null) percentageText.text    = "0%";
@@ -466,12 +505,13 @@ public class PointInfoPanel : MonoBehaviour
                 return;
             }
 
-            currentIndex = Mathf.Clamp(currentIndex, 0, markerOrder.Count - 1);
+            currentIndex = -1;
             RefreshPanel();
             return;
         }
 
         PointData p = currentEntry.data;
+        hasPresentedMarker = true;
         BindObservedMarker(p);
 
         Debug.Log($"[Panel] RefreshPanel -> {p.pointClass} / {p.pointID} (index {currentIndex}/{markerOrder.Count})");
@@ -480,13 +520,14 @@ public class PointInfoPanel : MonoBehaviour
         if (idValueText       != null) idValueText.text       = p.pointID;
         if (altitudeValueText != null)
         {
-            altitudeValueText.text = p.elevationUnresolved ? "Elevation unavailable" :
+            altitudeValueText.text = p.elevationUnresolved ? "-" :
                 p.hasHeightAboveSurface
-                ? $"{p.heightAboveSurface:F2} m" + (p.heightSource == "mesh" ? "" : " (estimated)")
-                : "Height unavailable";
+                ? $"{p.heightAboveSurface:F2} m" + (p.heightSource == "mesh" ? "" : "\n<size=70%>(Estimated)</size>")
+                : "-";
         }
-        if (sourceText != null) sourceText.text = (IsProtectedLatestMqttMarker(p) ? string.Empty : p.source) +
-            (string.IsNullOrEmpty(p.syncStatus) ? string.Empty : "\n" + p.syncStatus);
+        if (sourceText != null) sourceText.text =
+            (string.IsNullOrEmpty(p.syncStatus) ? string.Empty : p.syncStatus.ToUpperInvariant() + "\n") +
+            (IsProtectedLatestMqttMarker(p) ? string.Empty : p.source);
         if (latValueText      != null) latValueText.text      = $"{Mathf.Abs((float)p.latitude):F4}° {(p.latitude  >= 0 ? "N" : "S")}";
         if (longValueText     != null) longValueText.text     = $"{Mathf.Abs((float)p.longitude):F4}° {(p.longitude >= 0 ? "E" : "W")}";
 
@@ -633,17 +674,6 @@ public class PointInfoPanel : MonoBehaviour
         if (!gameObject.activeInHierarchy || markerOrder.Count == 0)
             return;
 
-        int incomingId = data.GetInstanceID();
-        int incomingIndex = markerOrder.IndexOf(incomingId);
-        if (incomingIndex >= 0)
-        {
-            if (currentIndex != incomingIndex)
-                currentIndex = incomingIndex;
-
-            RefreshPanel();
-            return;
-        }
-
         if (TryGetEntryAtIndex(currentIndex, out MarkerEntry current) && current.data == data)
         {
             RefreshPanel();
@@ -684,11 +714,7 @@ public class PointInfoPanel : MonoBehaviour
         int id = markerOrder[index];
         if (!markerEntries.TryGetValue(id, out entry))
         {
-            markerOrder.RemoveAt(index);
-            if (markerOrder.Count == 0)
-                currentIndex = 0;
-            else
-                currentIndex = Mathf.Clamp(currentIndex, 0, markerOrder.Count - 1);
+            RemoveMarkerById(id, false);
             return false;
         }
 
@@ -702,6 +728,7 @@ public class PointInfoPanel : MonoBehaviour
 
     private void RemoveMarkerById(int markerId, bool stopPulse)
     {
+        int selectedId = currentIndex >= 0 && currentIndex < markerOrder.Count ? markerOrder[currentIndex] : -1;
         if (markerEntries.TryGetValue(markerId, out MarkerEntry entry))
         {
             if (entry.data != null && observedMarker == entry.data)
@@ -724,10 +751,8 @@ public class PointInfoPanel : MonoBehaviour
             markerRelays.Remove(markerId);
         }
 
-        if (markerOrder.Count > 0)
-            currentIndex = Mathf.Clamp(currentIndex, 0, markerOrder.Count - 1);
-        else
-            currentIndex = 0;
+        currentIndex = selectedId == markerId ? -1 : markerOrder.IndexOf(selectedId);
+        if (selectedId == markerId && !markerRefreshInProgress) RefreshPanel();
 
         if (deleteButton != null && markerOrder.Count == 0)
         {

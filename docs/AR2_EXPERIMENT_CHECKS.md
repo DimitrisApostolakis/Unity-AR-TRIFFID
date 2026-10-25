@@ -38,8 +38,8 @@ If these dependencies are not in their usual locations, set `AR2_MONO`,
 `AR2_CSC`, and `AR2_NEWTONSOFT_DLL`. A private Mono installation can also use
 `AR2_MONO_CONFIG`, `MONO_PATH`, and `LD_LIBRARY_PATH`.
 
-The verified result is **57 core checks, 18 coordinator checks, and 12 mesh
-loader checks passed**. The mesh checks compile the production loader with
+The verified result is **57 core checks, 18 coordinator checks, 12 mesh
+loader checks, and 15 interaction checks passed**. The mesh checks compile the production loader with
 engine test doubles and exercise cache reuse, invalidation, explicit reload,
 collider bindings, and runtime/imported-mesh ownership.
 The runner compiles the production data models, outbox, polygon validator,
@@ -47,6 +47,36 @@ atomic writer, payload parser, and synchronization coordinator with compiler
 warnings treated as errors. Coordinator checks use simulated scheduling,
 transport, and local-file ownership. They do not execute Unity physics,
 the complete application, or a real server.
+
+The interaction checks compile the production information panel, marker event
+manager, and surface query with engine doubles. They verify collider-state
+restoration on hits, misses, invalid rays and exceptions, stable panel selection,
+explicit navigation, feature/node matching across server rebuilds, deletion,
+and displayed height/status strings. They do not validate native PhysX queries,
+XR inputs, TMP rendering or the actual scene layout.
+
+## Height queries and information-panel selection
+
+Map manipulation can disable the reference collider for interaction. A surface
+query now temporarily enables that configured collider synchronously, synchronizes
+its transform, performs its raycasts, and restores the disabled state in a
+`finally` block. It does not replace the mesh or activate the mesh-loading
+behaviour. The existing geographic vertical and signed-height calculation are
+unchanged. The separately configured inactive-object activation policy still
+applies; a query does not activate an inactive object by itself.
+
+Unavailable elevation or height displays `-`. Estimated height has its own
+second line, with `(Estimated)` below the numeric value. Sync status appears
+between the class and source, for example `ANIMAL`, `PENDING`, `GROUND STATION`.
+The source remains stored and displayed.
+
+Hover events and metadata changes for another marker no longer select it.
+The panel follows explicit marker selection and previous/next navigation.
+Server rebuilds retain the selected feature ID and its node ordinal, so
+reordered feature collections do not send the panel back to the first point.
+Removing a different marker preserves the current selection. If the selected
+feature disappears in a server rebuild, the panel clears until another explicit
+selection rather than showing an unrelated feature.
 
 ## Server authority and offline backup
 
@@ -120,13 +150,16 @@ cause of a scene hitch.
 2. Wait for scripts to compile. Resolve any compiler errors before proceeding.
 3. Outside Play mode, select **AR2 > Experiments > Run Regression Checks**.
 4. Inspect the Console. Expected results are 57 passing core checks and
-   **23 passing Unity checks**, with no failing checks.
+   **44 passing Unity checks**, with no failing checks.
 
 The Unity checks create and remove temporary objects. They check signed
 offsets of -2, 0, and +2 metres, out-of-mesh searches, map translation and
 rotation, display scales of 0.01 and 3, mirrored scale, and a nonuniformly
 scaled hierarchy. They also check rejection of invalid calibration scale and
-the unresolved-elevation marker colour. They have not been run in the remote
+the unresolved-elevation marker colour. The same 20 surface cases also run with
+the collider initially disabled and check that it stays disabled after the
+query, including misses. An additional panel check verifies selection through
+background updates, rebuilding and server deletion. They have not been run in the remote
 development environment because the Unity editor is unavailable there.
 
 The additional mesh-cache check loads a temporary OBJ, repeatedly invokes the
@@ -199,6 +232,9 @@ Inspector settings, server version, feature IDs, and Console output.
 | Disconnect AR, delete server features, restart AR offline, then reconnect | The backup remains visible offline. Reconnection applies the deletions, and a subsequent restart does not restore them. |
 | Return an invalid or incomplete response instead of a valid empty FeatureCollection | The local backup and visible map remain intact. |
 | Inspect a negative mesh height in the information panel | It displays a signed number such as `-0.40 m`, without a below-surface suffix. |
+| Disable the surface MeshCollider while manipulating the map, then query an annotation's height | A valid mesh intersection still resolves the height. The MeshCollider remains disabled after the query. |
+| Leave one marker selected while hovering others, receiving MQTT updates, or applying server refreshes | The panel retains the selected feature and node, unless that feature was removed. |
+| Inspect an estimated height and a pending marker | The estimate label appears below the number. Status appears between the class and retained source. Missing height/elevation is `-`. |
 
 Server edits and deletions do not require manual conflict resolution. For
 unresolved create identities or duplicate client IDs, select the object with
