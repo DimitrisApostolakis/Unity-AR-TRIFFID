@@ -173,6 +173,16 @@ public static class SceneConsistencyCollector
                     trial++;
                 }
             }
+            // A separate fixture verifies actual edits after the unchanged cycle
+            // experiment. It cannot contaminate its pose/cycle measurements.
+            pose.Restore(map);
+            using (var editSession = new SceneConsistencySession(map, Path.Combine(capture, "alignment.json"),
+                Path.Combine(capture, "fixture.geojson"), Path.Combine(capture, "State_deliberate_edits")))
+            {
+                JObject checks = editSession.CheckDeliberateEdits();
+                WriteJson(Path.Combine(capture, "deliberate_edit_checks.json"), checks);
+                metadata["deliberate_edits_passed"] = checks.Value<bool>("passed");
+            }
             metadata["completed"] = true;
         }
         catch (Exception error)
@@ -195,7 +205,7 @@ public static class SceneConsistencyCollector
             metadata["finished_utc"] = DateTime.UtcNow.ToString("O", Invariant);
             WriteJson(Path.Combine(capture, "pose_matrices.json"), matrices);
             var hashes = new JObject();
-            foreach (string name in new[] { "scene_raw.csv", "save_events.csv", "outbox_events.jsonl", "pose_matrices.json" })
+            foreach (string name in new[] { "scene_raw.csv", "save_events.csv", "outbox_events.jsonl", "pose_matrices.json", "deliberate_edit_checks.json" })
                 if (File.Exists(Path.Combine(capture, name))) hashes[name] = Hash(Path.Combine(capture, name));
             metadata["output_sha256"] = hashes;
             WriteJson(Path.Combine(capture, "scene_runtime.json"), metadata);
@@ -303,3 +313,4 @@ public static class SceneConsistencyCollector
     private static string SourceHash(string path)
     { using (var sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(File.ReadAllText(path).Replace("\r\n", "\n").TrimEnd() + "\n"))).Replace("-", "").ToLowerInvariant(); }
 }
+

@@ -102,7 +102,7 @@ public partial class JsonSpawner
                targetCollider.gameObject.activeInHierarchy;
     }
 
-    private bool RefreshHeightAboveSurface(Transform pointTransform, Feature feature, PointData data, bool notifyDataChanged = true)
+    private bool RefreshHeightAboveSurface(Transform pointTransform, Feature feature, PointData data, bool notifyDataChanged = true, bool persistMetadata = true)
     {
         if (pointTransform == null || data == null) return false;
         string before = feature == null || feature.properties == null ? null : JsonConvert.SerializeObject(feature.properties);
@@ -124,7 +124,7 @@ public partial class JsonSpawner
             data.hasHeightAboveSurface = false; data.heightSource = "unavailable";
             data.heightStatus = data.elevationUnresolved ? "elevation_unresolved" : "no_surface";
         }
-        if (feature != null) StorePointHeightMetadata(feature, data);
+        if (feature != null && persistMetadata) StorePointHeightMetadata(feature, data);
         if (notifyDataChanged) data.NotifyDataChanged();
         return feature != null && before != JsonConvert.SerializeObject(feature.properties);
     }
@@ -403,3 +403,4 @@ public partial class JsonSpawner
         // The query synchronizes physics after restoring any disabled collider.
     }
 }
+

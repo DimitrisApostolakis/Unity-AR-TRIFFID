@@ -14,6 +14,19 @@ public static class CoordinatorRegressionTests
     public static int Run()
     {
         passed=failed=0;
+        Test("polygon delivery preserves saved winding and does not requeue after acknowledgement", () =>
+        {
+            Feature original=JsonConvert.DeserializeObject<Feature>(@"{""id"":""Polygon_A"",""properties"":{""class"":""safe"",""source"":""Robot""},""geometry"":{""type"":""Polygon"",""coordinates"":[[[23,38,5],[23,38.001,5],[23.001,38,5],[23,38,5]]]}}");
+            Root root=Clean(original);root.features[0].geometry.coordinates[0][1][2]=6d;
+            GeoJsonOutbox.CaptureChanges(root,DateTime.UtcNow);
+            string expected=JsonConvert.SerializeObject(root.features[0]);
+            using(Fixture f=new Fixture(root,original))
+            {
+                f.Until(()=>f.api.updateCount==1&&f.Load().syncState.pending.Count==0);f.Steps(30);
+                Check(f.api.updateCount==1&&f.api.createCount==0&&f.api.deleteCount==0);
+                Check(JsonConvert.SerializeObject(f.Load().features[0])==expected);
+            }
+        });
         Test("a fresh scene restores an unchanged saved collection without uploads or observer acknowledgement", () =>
         {
             Feature original=Point("a",1);
@@ -369,3 +382,4 @@ public static class CoordinatorRegressionTests
     private static void Equal(double actual,double expected) { Check(Math.Abs(actual-expected)<1e-8); }
     private static void Test(string name,Action action) { try { action(); passed++; Console.WriteLine("PASS "+name); } catch(Exception ex) { failed++; Console.WriteLine("FAIL "+name+": "+ex); } }
 }
+

@@ -230,7 +230,7 @@ For a hitch coinciding with `Saved to:`, enable **Log Save Stage Timings** on
 `JsonSpawner` (enabled by default). Its existing save message includes an
 `[AR2 SaveTiming]` suffix. Durations are milliseconds:
 
-- `world`, `normalize`, `outbox`, `labels`, and `serialize` measure synchronous
+- `outbox`, `labels`, and `serialize` measure synchronous
   preparation on the main thread.
 - `backgroundWrite` measures the background file operation, including its file
   lock. A long background write alone does not establish a main-thread stall.
@@ -388,3 +388,4 @@ against Editor doubles. They exercise inherited headers, field coverage, foldout
 state, search, dedicated path exclusions and read-only diagnostics. They do not
 replace a native Unity import and visual Inspector check. See
 [code organization](CODE_STRUCTURE.md) for the new source layout.
+

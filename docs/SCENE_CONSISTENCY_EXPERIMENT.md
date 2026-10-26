@@ -3,9 +3,50 @@
 This collector uses the loaded scene's actual map Transform and its complete
 parent hierarchy. It invokes the existing `JsonSpawner` coordinate lookup,
 synchronous save/atomic-write path, outbox change capture and `SpawnFromJson`
-reload. Runtime application code and serialized references are unchanged.
+reload. It measures the checked-out runtime code without changing serialized scene references.
 Run native Unity measurements locally; compiler/safety checks with engine doubles
 are not scientific scene measurements.
+
+## Repeat after the coordinate-preserving persistence fix
+
+The original failed baseline is `Capture_20261026T032049Z_f1ec03c8.zip`.
+Keep that archive unchanged. Its SHA-256 is
+`c9236750cda942cb69753a60c332a18220f272a408e7f43845e873a6143ac626`.
+It completed the 100-cycle collection with source restoration, but failed the
+evaluation: 4,474 new outbox operations in total, including 4,364 during measured
+normal poses/cycles after warmup. Completion does not mean a passing experiment.
+
+After pulling this fix, prepare a NEW input directory from the extracted baseline:
+
+```bat
+python LocalScripts/run_scene_consistency.py --repeat-from-capture "C:\path\Capture_20261026T032049Z_f1ec03c8" --output "C:\path\PreparedSceneInputs_CoordinateFix"
+```
+
+This verifies the old input/output hashes and copies the exact fixture,
+alignment, poses and expected coordinates. It retains the original 0.01 m
+numerical budget and records the comparison baseline. Only code provenance and
+the explicit new validation requirements change. Reusing the old source manifest
+directly will correctly fail the collector's source checks.
+
+Run **Run Pilot (100 Cycles)** with the NEW directory, following the steps below.
+The same 44 poses and four 100-cycle save/load conditions run first. A separate
+disconnected fixture then checks deliberate point, line-vertex and polygon-first-
+vertex edits through the production commit/save/reload path. The polygon check
+includes its duplicate closure. Each edited feature must create one operation,
+unrelated features/vertices must stay unchanged, and a repeated save/reload must
+create no further operations. Evidence is written to `deliberate_edit_checks.json`.
+These deterministic edits do not replace a manual controller/hand replay.
+
+The repeat additionally requires exact equality of all stored geographic triples,
+zero new outbox operations and zero feature-semantic changes in every unedited
+save, including warmup and stress saves. Scene/world measurements still use the
+original numerical budget. Do not run the 1,000-cycle extension until the new
+100-cycle capture passes these checks and deliberate edits persist successfully.
+
+The automated headless checks exercise the production persistence/edit methods,
+including 100 saves of the supplied geographic fixture. They are regression
+evidence, not a rerun of the native Unity map experiment. No new native capture
+has been collected as part of this code change.
 
 ## Run the prepared Harokopio pilot
 
@@ -125,8 +166,9 @@ and stored coordinates are recorded at cycles 0 through 100 (pilot), or 1000
 
 Forced saving tests whether an unedited save/reload changes semantics. It does
 not assert that the timer naturally initiates all these writes. The synchronous
-pause/quit flush shares the world-to-JSON, normalization, outbox, serialization
-and atomic-write stages; normal async save scheduling/latency is not measured.
+pause/quit flush shares the outbox, serialization and atomic-write stages with
+normal saves. Neither save path converts display positions or normalizes feature
+properties. Normal async save scheduling/latency is not measured by this collector.
 
 ## Analysis and pass criteria
 
@@ -174,3 +216,4 @@ raw data or failure to restore the source cannot yield a completed pass.
 A separate settled no-op trial with sync active and request instrumentation is
 still required. Also remaining: a small human controller/hand manipulation replay,
 native surface-height measurements, held-out geographic accuracy and performance.
+

@@ -868,6 +868,16 @@ public partial class JsonSpawner
             registered++;
         }
 
+        // The repeated closing tuple is an alias of the first vertex. Keep both
+        // bound so moving that vertex updates closure exactly once at release.
+        if (registered > 0 && outerRing.Count > ringUsableCount)
+        {
+            NodeMapping first = nodeMappings.Find(m => ReferenceEquals(m.parentFeature, feature) &&
+                ReferenceEquals(m.coordArray, outerRing[0]));
+            if (first != null) nodeMappings.Add(new NodeMapping { node = first.node, parentFeature = feature,
+                coordArray = outerRing[outerRing.Count - 1] as JArray });
+        }
+
         if (registered > 0)
         {
             UpdateFeatureHeightAboveSurfaceData(feature);
@@ -926,3 +936,4 @@ public partial class JsonSpawner
         lineNodeColorHexByNode.Remove(node);
     }
 }
+

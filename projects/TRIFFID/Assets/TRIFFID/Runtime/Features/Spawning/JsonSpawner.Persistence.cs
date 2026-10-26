@@ -31,83 +31,13 @@ public partial class JsonSpawner
 
     public bool SyncData(PointData data, Transform sourceNode)
     {
-        if (data == null || currentRootData?.features == null)
-            return false;
-
-        if (!IsValidCoordinateSet(data.latitude, data.longitude, data.altitude))
+        if (data == null || currentRootData?.features == null) return false;
+        if (sourceNode == null)
         {
-            Debug.LogWarning($"[JsonSpawner] SyncData skipped for pointID={data.pointID}. Invalid coordinates.");
-            return false;
+            NodeMapping found = nodeMappings.Find(m => m.node != null && m.node.GetComponent<PointData>() == data);
+            sourceNode = found == null ? null : found.node;
         }
-
-        bool updated = false;
-        string targetId = data.pointID ?? string.Empty;
-        HashSet<Feature> vertexHeightFeatures = new HashSet<Feature>();
-
-        foreach (var mapping in nodeMappings)
-        {
-            if (mapping == null || mapping.parentFeature == null)
-                continue;
-
-            if (sourceNode != null && mapping.node != sourceNode)
-                continue;
-
-            string featureId = mapping.parentFeature.id;
-            if (!string.Equals(featureId, targetId, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            bool isPointFeature = IsPointFeature(mapping.parentFeature);
-            bool storesVertexHeights = SupportsPerVertexHeight(mapping.parentFeature);
-
-            if (!mapping.isCentroid)
-                RefreshLiveHeightAboveSurface(data, mapping.node);
-
-            if (!mapping.isCentroid && mapping.coordArray != null)
-            {
-                if (data.elevationUnresolved) continue;
-                if (mapping.coordArray.Count >= 2)
-                {
-                    mapping.coordArray[0] = data.longitude;
-                    mapping.coordArray[1] = data.latitude;
-                }
-
-                if (mapping.coordArray.Count >= 3)
-                    mapping.coordArray[2] = data.altitude;
-                else
-                    mapping.coordArray.Add(data.altitude);
-            }
-
-            if (mapping.parentFeature.properties != null && !mapping.isCentroid)
-            {
-                mapping.parentFeature.properties.altitude_m = (float)data.altitude;
-
-                if (isPointFeature)
-                {
-                    mapping.parentFeature.properties.height_above_surface_m = data.hasHeightAboveSurface
-                        ? (float?)data.heightAboveSurface
-                        : null;
-                    StorePointHeightMetadata(mapping.parentFeature, data);
-                }
-                else if (storesVertexHeights)
-                {
-                    vertexHeightFeatures.Add(mapping.parentFeature);
-                }
-            }
-
-            updated = true;
-        }
-
-        foreach (Feature feature in vertexHeightFeatures)
-            UpdateFeatureHeightAboveSurfaceData(feature);
-
-        if (updated)
-        {
-            MarkDataDirty();
-            return true;
-        }
-
-        UpdateCoordinatesChangesJson(data);
-        return false;
+        return CompleteFeatureEdit(sourceNode);
     }
 
     public void SaveCurrentStateToPersistentStorage()
@@ -137,8 +67,6 @@ public partial class JsonSpawner
         SaveStageTimings timings = new SaveStageTimings();
         try
         {
-            timings.world = MeasureSaveStage("AR2.Save.WorldToJson", SyncWorldToJSON);
-            timings.normalize = MeasureSaveStage("AR2.Save.Normalize", NormalizeForJsonWrite);
             timings.outbox = MeasureSaveStage("AR2.Save.CaptureChanges", () => GeoJsonOutbox.CaptureChanges(currentRootData, DateTime.UtcNow, 0.5d));
             timings.labels = MeasureSaveStage("AR2.Save.StatusLabels", UpdateSyncStatusLabels);
         }
@@ -250,7 +178,7 @@ public partial class JsonSpawner
             lastSavedVersion = Math.Max(lastSavedVersion, saveVersion);
             autoSaveTimer = 0f;
             string detail = logSaveStageTimings
-                ? $" | [AR2 SaveTiming] v={saveVersion} chars={json.Length} world={timings.world:F2}ms normalize={timings.normalize:F2}ms outbox={timings.outbox:F2}ms labels={timings.labels:F2}ms serialize={timings.serialize:F2}ms backgroundWrite={writeTicks * 1000d / Stopwatch.Frequency:F2}ms resumeWait={resumeMs:F2}ms followUp={saveQueued || dataVersion > lastSavedVersion}"
+                ? $" | [AR2 SaveTiming] v={saveVersion} chars={json.Length} outbox={timings.outbox:F2}ms labels={timings.labels:F2}ms serialize={timings.serialize:F2}ms backgroundWrite={writeTicks * 1000d / Stopwatch.Frequency:F2}ms resumeWait={resumeMs:F2}ms followUp={saveQueued || dataVersion > lastSavedVersion}"
                 : string.Empty;
             MeasureSaveStage("AR2.Save.CompletionLog", () => Debug.Log($"[JsonSpawner] Saved to: {saveFilePath} (lastModified: {currentRootData.lastModified})" + detail));
         }
@@ -283,8 +211,6 @@ public partial class JsonSpawner
 
         try
         {
-            SyncWorldToJSON();
-            NormalizeForJsonWrite();
             GeoJsonOutbox.CaptureChanges(currentRootData, DateTime.UtcNow, 0.5d);
             UpdateSyncStatusLabels();
         }
@@ -368,57 +294,6 @@ public partial class JsonSpawner
         return false;
     }
 
-    private void NormalizeForJsonWrite()
-    {
-        if (currentRootData?.features == null)
-            return;
-
-        foreach (Feature feature in currentRootData.features)
-        {
-            if (feature == null)
-                continue;
-
-            feature.id = NormalizeLower(feature.id);
-
-            if (feature.properties == null)
-                continue;
-
-            feature.properties.className = NormalizeLower(feature.properties.className);
-            feature.properties.id = NormalizeLower(feature.properties.id);
-            feature.properties.category = NormalizeLower(feature.properties.category);
-            feature.properties.source = NormalizeLower(feature.properties.source);
-            feature.properties.marker_color = NormalizeLower(feature.properties.marker_color);
-            feature.properties.fill = NormalizeLower(feature.properties.fill);
-
-            EnsurePolygonFillStyle(feature);
-        }
-    }
-
-    private static void EnsurePolygonFillStyle(Feature feature)
-    {
-        if (feature?.properties == null)
-            return;
-
-        bool isPolygon = string.Equals(feature.geometry?.type, "Polygon", StringComparison.OrdinalIgnoreCase) ||
-                         string.Equals(feature.geometry?.type, "MultiPolygon", StringComparison.OrdinalIgnoreCase);
-        if (!isPolygon)
-            return;
-
-        string markerHex = feature.properties.marker_color;
-        if (!string.IsNullOrWhiteSpace(markerHex) && ColorUtility.TryParseHtmlString(markerHex, out _))
-            feature.properties.fill = markerHex.StartsWith("#", StringComparison.Ordinal) ? markerHex.ToLowerInvariant() : ("#" + markerHex.ToLowerInvariant());
-
-        feature.properties.fill_opacity = 0.25f;
-    }
-
-    private static string NormalizeLower(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return value;
-
-        return value.Trim().ToLowerInvariant();
-    }
-
     private static string ResolveCoordinatesChangesPath()
     {
         string assetPath = Path.Combine(Application.dataPath, "Data", "coordinates_changes.json");
@@ -453,20 +328,9 @@ public partial class JsonSpawner
             {
                 foreach (var f in features)
                 {
-                    JObject props = f["properties"] as JObject;
-                    if (props != null)
-                    {
-                        props["class"] = NormalizeLower(props["class"]?.ToString());
-                        props["id"] = NormalizeLower(props["id"]?.ToString());
-                        props["category"] = NormalizeLower(props["category"]?.ToString());
-                        props["source"] = NormalizeLower(props["source"]?.ToString());
-                        props["marker-color"] = NormalizeLower(props["marker-color"]?.ToString());
-                    }
-
                     string fId = f["id"]?.ToString();
                     if (fId == pd.pointID)
                     {
-                        f["id"] = NormalizeLower(f["id"]?.ToString());
                         f["geometry"]["coordinates"] = new JArray { pd.longitude, pd.latitude, pd.altitude };
                         f["properties"]["altitude_m"] = (float)pd.altitude;
                         f["properties"]["height_above_surface_m"] = pd.hasHeightAboveSurface ? new JValue(pd.heightAboveSurface) : JValue.CreateNull();
@@ -485,3 +349,4 @@ public partial class JsonSpawner
         }
     }
 }
+

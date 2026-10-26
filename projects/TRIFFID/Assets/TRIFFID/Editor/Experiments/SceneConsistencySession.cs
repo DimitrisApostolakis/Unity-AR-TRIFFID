@@ -104,6 +104,47 @@ internal sealed class SceneConsistencySession : IDisposable
         GeoJsonAtomicFile.Write(SavePath, JsonConvert.SerializeObject(Data, Formatting.Indented));
     }
 
+    internal JObject CheckDeliberateEdits()
+    {
+        AcknowledgeFixture();
+        var checks = new JArray();
+        foreach (string geometry in new[] { "Point", "LineString", "Polygon" })
+        {
+            List<Node> nodes = Nodes();
+            Node selected = nodes.First(n => n.feature.geometry.type == geometry);
+            var beforeFeatures = Data.features.ToDictionary(f => f.id, f => JsonConvert.SerializeObject(f));
+            var beforeVertices = nodes.ToDictionary(n => n.Key, n => n.coordinate.ToString());
+            var editedKeys = new HashSet<string>(nodes.Where(n => n.transform == selected.transform).Select(n => n.Key));
+            Spawner.BeginFeatureEdit(selected.transform);
+            selected.transform.localPosition += new Vector3(0.01f, 0.005f, -0.007f);
+            if (!Spawner.SyncData(selected.transform.GetComponent<PointData>(), selected.transform))
+                throw new InvalidDataException("Deliberate " + geometry + " edit was rejected.");
+            Root stored = Save();
+            foreach (Feature feature in stored.features)
+                if (feature.id != selected.feature.id && JsonConvert.SerializeObject(feature) != beforeFeatures[feature.id])
+                    throw new InvalidDataException("An edit changed an unrelated feature.");
+            foreach (Node node in Nodes())
+            {
+                bool changed = node.coordinate.ToString() != beforeVertices[node.Key];
+                if (changed != editedKeys.Contains(node.Key))
+                    throw new InvalidDataException("An edit changed the wrong geographic vertices.");
+            }
+            if (stored.syncState.pending.Count != checks.Count + 1 || stored.syncState.nextRevision != checks.Count + 2)
+                throw new InvalidDataException("Unexpected deliberate-edit outbox operations.");
+            string savedFeatures = JsonConvert.SerializeObject(stored.features);
+            long revision = stored.syncState.nextRevision;
+            Reload();
+            Root repeated = Save();
+            if (JsonConvert.SerializeObject(repeated.features) != savedFeatures || repeated.syncState.nextRevision != revision)
+                throw new InvalidDataException("A completed edit drifted or requeued on save/reload.");
+            checks.Add(new JObject { ["geometry"] = geometry, ["feature_id"] = selected.feature.id,
+                ["changed_coordinate_entries"] = editedKeys.Count, ["saved_and_reloaded"] = true,
+                ["repeat_save_new_operations"] = 0 });
+        }
+        return new JObject { ["passed"] = true, ["checks"] = checks,
+            ["scope"] = "Native deterministic point, line-vertex and polygon-closure edits through production commit/save/reload; controller/hand replay remains separate." };
+    }
+
     internal List<Node> Nodes()
     {
         var coordinates = new List<Node>();
@@ -214,3 +255,4 @@ internal sealed class SceneConsistencySession : IDisposable
         catch (TargetInvocationException error) { throw error.InnerException ?? error; }
     }
 }
+

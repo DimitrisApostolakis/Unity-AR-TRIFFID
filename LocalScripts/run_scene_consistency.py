@@ -19,6 +19,7 @@ SOURCE_PATHS = [*sorted((numerical.RUNTIME / 'Features/Spawning').glob('JsonSpaw
     numerical.RUNTIME / 'Geospatial/Coordinates/GeoUtils.cs',
     numerical.RUNTIME / 'Features/Model/GeoJsonDataModels.cs',
     numerical.RUNTIME / 'Features/Model/GeoJsonPolygonValidator.cs',
+    numerical.RUNTIME / 'Features/Model/GeoJsonVertexEdit.cs',
     numerical.RUNTIME / 'Features/Persistence/GeoJsonSyncState.cs',
     numerical.RUNTIME / 'Features/Persistence/GeoJsonAtomicFile.cs',
     numerical.RUNTIME / 'Features/Presentation/FloatingIcon.cs',
@@ -141,6 +142,33 @@ def prepare(source, output, threshold=.01):
     print(f'Prepared {len(selected)} distinct locations, {len(expected)} coordinate entries in {output}')
 
 
+def repeat_from_capture(source, output):
+    """Keep the exact fixture, plan and tolerance, refreshing only code provenance."""
+    prepared=json.loads((source/'prepared_scene.json').read_text())
+    runtime=json.loads((source/'scene_runtime.json').read_text())
+    if prepared.get('schema_version')!=1 or not runtime.get('completed') or not runtime.get('source_state_restored'):
+        raise ValueError('Use a completed capture with restored source state as the comparison baseline')
+    for name,expected in prepared['files_sha256'].items():
+        if numerical.digest(source/name)!=expected: raise ValueError('Baseline input changed: '+name)
+    for name,expected in runtime['output_sha256'].items():
+        if numerical.digest(source/name)!=expected: raise ValueError('Baseline output changed: '+name)
+    output.mkdir(parents=True,exist_ok=False)
+    for name in ['alignment.json','fixture.geojson','plan.json','expected.csv']:
+        shutil.copyfile(source/name,output/name)
+    prepared['created_utc']=datetime.now(timezone.utc).isoformat()
+    prepared['sources_lf_sha256']={str(p.relative_to(REPO/'projects/TRIFFID/Assets')):numerical.source_digest(p) for p in SOURCE_PATHS}
+    prepared['analysis_driver_sha256']=numerical.digest(Path(__file__))
+    prepared['comparison_baseline']={'capture':source.name,
+        'prepared_sha256':numerical.digest(source/'prepared_scene.json'),
+        'runtime_sha256':numerical.digest(source/'scene_runtime.json'),
+        'output_sha256':runtime['output_sha256'], 'max_cycles':runtime['max_cycles'],
+        'note':'Original failed capture retained unchanged; these are inputs for a NEW native run, not new measurements.'}
+    prepared['require_exact_stored_coordinates']=True
+    prepared['require_explicit_edit_checks']=True
+    numerical.dump(output/'prepared_scene.json',prepared)
+    print('Prepared exact-input repeat in '+str(output))
+
+
 def analyze(directory, make_plot=True):
     runtime=json.loads((directory/'scene_runtime.json').read_text())
     prepared=json.loads((directory/'prepared_scene.json').read_text())
@@ -159,7 +187,7 @@ def analyze(directory, make_plot=True):
     cfg=numerical.calibration(json.loads((directory/'alignment.json').read_text()), True)
     if 'calibration_float' in runtime and numerical.calibration(runtime['calibration_float'],True)[:4]!=cfg[:4]:
         raise ValueError('Runtime float calibration mismatch')
-    ref=numerical.Reference(cfg[0]); series={};attempted={};previous={};world_baselines={};seen=set();total=0
+    ref=numerical.Reference(cfg[0]); series={};attempted={};previous={};world_baselines={};seen=set();total=0;stored_mismatches=Counter()
     if runtime['max_cycles'] not in [100,1000]: raise ValueError('Unexpected cycle limit')
     plan_data=json.loads((directory/'plan.json').read_text())
     scopes={('pose',p['id']):p['scope'] for p in plan_data['poses']}
@@ -179,6 +207,7 @@ def analyze(directory, make_plot=True):
             seen.add(event)
             actual=tuple(float(row[k]) for k in ['lon','lat','height']); baseline=tuple(float(row['baseline_'+k]) for k in ['lon','lat','height'])
             stored=tuple(float(row['stored_'+k]) for k in ['lon','lat','height']); original=tuple(float(target[k]) for k in ['lon','lat','height'])
+            if stored!=original: stored_mismatches[row['scope']]+=1
             local=tuple(float(row['local_'+k]) for k in 'xyz'); inverse=tuple(float(row['inverse_'+k]) for k in 'xyz')
             world=tuple(float(row['world_'+k]) for k in 'xyz')
             finite=all(math.isfinite(v) for v in (*actual,*baseline,*stored,*local,*inverse,*world))
@@ -237,9 +266,22 @@ def analyze(directory, make_plot=True):
     normal_primary=[r for r in summaries if r['scope']=='normal' and r['phase'] in ['pose','cycle'] and r['measurement'] in ['scene_vs_input','scene_vs_baseline','stored_vs_input','world_vs_input','world_vs_baseline']]
     result={'stage':'pilot_scene_consistency','profile':runtime['profile'],'raw_rows':total,'threshold_m':prepared['threshold_m'],
         'summary':summaries,'new_outbox_operations_after_warmup':queue,
+        'exact_stored_coordinate_mismatches':dict(stored_mismatches),
         'actual_network_uploads':'not measured: sandbox has no sync coordinator or API manager',
         'source_state_restored':True,'analysis_environment':{'python':sys.version,'pyproj':ref.version,'proj':ref.proj_version},
         'normal_pass':bool(normal_primary) and all(r['pass'] for r in normal_primary) and queue['normal']==0}
+    if prepared.get('require_exact_stored_coordinates'):
+        result['stored_coordinates_pass']=not stored_mismatches
+        result['unedited_saves_pass']=all(int(r['new_operations'])==0 and int(r['changed_feature_semantics'])==0 for r in saves)
+        result['normal_pass'] &= result['stored_coordinates_pass'] and result['unedited_saves_pass']
+    if prepared.get('require_explicit_edit_checks'):
+        if 'deliberate_edit_checks.json' not in runtime['output_sha256']:
+            raise ValueError('Native deliberate edit evidence is missing')
+        checks=json.loads((directory/'deliberate_edit_checks.json').read_text())
+        result['deliberate_edits_pass']=runtime.get('deliberate_edits_passed') is True and checks.get('passed') is True and \
+            [c.get('geometry') for c in checks.get('checks',[])]==['Point','LineString','Polygon'] and \
+            all(c.get('saved_and_reloaded') is True and c.get('repeat_save_new_operations')==0 for c in checks['checks'])
+        result['normal_pass'] &= result['deliberate_edits_pass']
     numerical.dump(directory/'scene_summary.json',result)
     with (directory/'scene_summary.csv').open('w',newline='') as stream:
         w=csv.writer(stream); w.writerow(['phase','scope','condition','geometry_type','measurement','attempted','failed','max_3d_m','p95_3d_m','exceeding','pass'])
@@ -269,10 +311,14 @@ def pack(directory):
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--prepare-from',type=Path);p.add_argument('--output',type=Path);p.add_argument('--threshold-m',type=float,default=.01);p.add_argument('--analyze-run',type=Path);p.add_argument('--pack-run',type=Path)
+    p.add_argument('--repeat-from-capture',type=Path)
     a=p.parse_args(argv)
     try:
         if a.pack_run:pack(a.pack_run.resolve());return 0
         if a.analyze_run:return 0 if analyze(a.analyze_run.resolve())['normal_pass'] else 1
+        if a.repeat_from_capture:
+            if not a.output:p.error('Use --repeat-from-capture BASELINE_CAPTURE --output NEW_FOLDER')
+            repeat_from_capture(a.repeat_from_capture.resolve(),a.output.resolve());return 0
         if not a.prepare_from or not a.output:p.error('Use --prepare-from E1_FOLDER --output NEW_FOLDER, or --analyze-run CAPTURE_FOLDER')
         if not math.isfinite(a.threshold_m) or a.threshold_m<=0:p.error('threshold must be finite and positive')
         prepare(a.prepare_from.resolve(),a.output.resolve(),a.threshold_m);return 0
@@ -280,3 +326,4 @@ def main(argv=None):
         print('FAILED: '+str(error),file=sys.stderr);return 2
 
 if __name__=='__main__':raise SystemExit(main())
+

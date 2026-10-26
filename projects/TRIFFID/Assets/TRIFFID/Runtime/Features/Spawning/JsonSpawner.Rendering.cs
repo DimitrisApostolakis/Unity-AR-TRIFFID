@@ -440,9 +440,6 @@ public partial class JsonSpawner
                 // Reproject using the supplied longitude/latitude. A surface
                 // estimate may supply altitude, never replacement horizontal coordinates.
                 obj.transform.localPosition = GetColmapPosition(lon, lat, alt);
-                TryWriteAltitudeToCoordinateToken(token, alt);
-                if (feature.properties != null && IsPointFeature(feature))
-                    feature.properties.altitude_m = (float)alt;
             }
             else if (shouldFallbackToSurface)
             {
@@ -464,7 +461,6 @@ public partial class JsonSpawner
             if (prefabToUse == nodePrefab) ApplyColor(obj, fallbackColor);
             data.SetElevationUnresolved(!elevationResolved);
 
-            bool heightMetadataChanged = false;
             if (isCentroid)
             {
                 // A centroid can show a live value in the InfoPanel, but it is not
@@ -473,7 +469,7 @@ public partial class JsonSpawner
             }
             else if (IsPointFeature(feature))
             {
-                heightMetadataChanged = RefreshHeightAboveSurface(obj.transform, feature, data);
+                RefreshHeightAboveSurface(obj.transform, feature, data, true, false);
             }
             else if (SupportsPerVertexHeight(feature))
             {
@@ -488,12 +484,7 @@ public partial class JsonSpawner
                     data.heightStatus = "query_failed";
                 }
 
-                heightMetadataChanged = data.hasHeightAboveSurface &&
-                                        (!hadStoredHeight || Math.Abs(data.heightAboveSurface - storedHeight) > 1e-4);
             }
-
-            if (heightMetadataChanged)
-                MarkDataDirty();
 
             data.confidence = feature.properties?.confidence ?? 0f;
             if (isLineNode)
@@ -543,22 +534,6 @@ public partial class JsonSpawner
             return false;
 
         return TryGetDouble(token[2], out altitude);
-    }
-
-    private static bool TryWriteAltitudeToCoordinateToken(JArray token, double altitude)
-    {
-        if (token == null || token.Count < 2)
-            return false;
-
-        if (!TryGetDouble(token[0], out _) || !TryGetDouble(token[1], out _))
-            return false;
-
-        if (token.Count >= 3)
-            token[2] = altitude;
-        else
-            token.Add(altitude);
-
-        return true;
     }
 
     private void SpawnLinePath(JArray lineToken, Feature feature, Color color, Transform customParent)
@@ -884,3 +859,4 @@ public partial class JsonSpawner
         }
     }
 }
+

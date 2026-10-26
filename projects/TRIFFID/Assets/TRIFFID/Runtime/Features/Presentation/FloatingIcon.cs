@@ -98,6 +98,7 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
 
     public void OnSelectEntered(SelectEnterEventArgs args)
     {
+        if (mySpawner != null) mySpawner.BeginFeatureEdit(transform);
         isBeingManipulated = true;
         manipulationDrivenByGrabSelectedFallback = false;
         FocusMarker(MarkerFocusReason.Select);
@@ -113,8 +114,8 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
 
     public void OnManipulationEnded(SelectExitEventArgs args)
     {
-        // Take one final uncapped sample while the manipulation state is still active.
-        RefreshLiveRuntimeData();
+        if (!isBeingManipulated) return;
+        bool edited = mySpawner != null && myPointData != null && mySpawner.SyncData(myPointData, transform);
         isBeingManipulated = false;
         manipulationDrivenByGrabSelectedFallback = false;
 
@@ -124,19 +125,8 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
             geoUpdateCoroutine = null;
         }
 
-        if (mainMap != null)
-            localMapPoint = mainMap.InverseTransformPoint(transform.position);
-
-        if (mySpawner != null)
-        {
-            if (myPointData == null)
-                myPointData = GetComponent<PointData>();
-
-            if (myPointData != null)
-                mySpawner.SyncData(myPointData, transform);
-
+        if (edited)
             mySpawner.SaveCurrentStateToPersistentStorage();
-        }
 
         if (myPointData != null)
         {
@@ -196,6 +186,7 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
 
     private void OnDisable()
     {
+        if (mySpawner != null) mySpawner.CancelFeatureEdit(transform);
         isBeingManipulated = false;
         if (geoUpdateCoroutine != null)
         {
@@ -213,6 +204,7 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
 
         if (grabInteractable.isSelected && !isBeingManipulated)
         {
+            if (mySpawner != null) mySpawner.BeginFeatureEdit(transform);
             isBeingManipulated = true;
             manipulationDrivenByGrabSelectedFallback = true;
 
@@ -226,25 +218,7 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
         }
         else if (!grabInteractable.isSelected && isBeingManipulated && manipulationDrivenByGrabSelectedFallback)
         {
-            isBeingManipulated = false;
-            manipulationDrivenByGrabSelectedFallback = false;
-
-            if (geoUpdateCoroutine != null)
-            {
-                StopCoroutine(geoUpdateCoroutine);
-                geoUpdateCoroutine = null;
-            }
-
-            if (mainMap != null)
-                localMapPoint = mainMap.InverseTransformPoint(transform.position);
-
-            if (mySpawner != null && myPointData != null)
-            {
-                mySpawner.SyncData(myPointData, transform);
-                mySpawner.SaveCurrentStateToPersistentStorage();
-                myPointData.NotifyDataChanged();
-                MarkerEventManager.RaiseMarkerMoved(myPointData);
-            }
+            OnManipulationEnded(null);
         }
     }
 
@@ -273,4 +247,5 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
             transform.LookAt(Camera.main.transform);
     }
 }
+
 

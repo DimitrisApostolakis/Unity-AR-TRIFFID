@@ -77,8 +77,9 @@ into that same class; do not attach them as additional components.
 
 | File in `Features/Spawning` | Responsibility |
 | --- | --- |
-| `JsonSpawner.cs` | Serialized setup, shared state, lifecycle, telemetry and world-state tracking |
-| `JsonSpawner.Persistence.cs` | Save scheduling, atomic commits and GeoJSON normalization |
+| `JsonSpawner.cs` | Serialized setup, shared state, lifecycle, telemetry and display helpers |
+| `JsonSpawner.Persistence.cs` | Save scheduling and atomic commits of existing geographic feature data |
+| `JsonSpawner.FeatureEdits.cs` | Explicit vertex edit start/completion/cancellation and geographic updates |
 | `JsonSpawner.Coordinates.cs` | Geographic conversion, transform loading and path validation |
 | `JsonSpawner.Surface.cs` | Surface placement, altitude and height metadata |
 | `JsonSpawner.Rendering.cs` | Geometry spawning, materials, cleanup, collider visibility and filters |
@@ -143,3 +144,4 @@ preserved GUIDs and unchanged component members. A native Unity compilation and
 scene smoke test are still required locally: open the demo, check the new
 Inspectors, manipulate the map, edit a point/line/polygon, check filters and hover,
 and repeat the guided outage test.
+

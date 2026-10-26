@@ -69,6 +69,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
 
     private void Unsubscribe()
     {
+        if (floatingIcon == null && jsonSpawner != null) jsonSpawner.CancelFeatureEdit(transform);
         if (!subscribed || interactable == null) return;
 
         interactable.hoverEntered.RemoveListener(OnHoverEntered);
@@ -85,6 +86,8 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
 
     private void OnSelectEntered(SelectEnterEventArgs args)
     {
+        ResolveSpawner();
+        if (floatingIcon == null && jsonSpawner != null) jsonSpawner.BeginFeatureEdit(transform);
         isManipulating = true;
         nextLiveUpdateTime = 0f;
         FocusMarker(MarkerFocusReason.Select);
@@ -98,10 +101,6 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
             return;
         }
 
-        // Capture the exact release position before persisting the marker.
-        nextLiveUpdateTime = 0f;
-        LateUpdate();
-
         ResolveSpawner();
         if (jsonSpawner == null && !missingSpawnerWarningLogged)
         {
@@ -111,8 +110,8 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
 
         if (jsonSpawner != null && pointData != null)
         {
-            jsonSpawner.SyncData(pointData, transform);
-            jsonSpawner.SaveCurrentStateToPersistentStorage();
+            if (jsonSpawner.SyncData(pointData, transform))
+                jsonSpawner.SaveCurrentStateToPersistentStorage();
             pointData.NotifyDataChanged();
             MarkerEventManager.RaiseMarkerMoved(pointData);
         }
@@ -182,3 +181,4 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
         missingPointDataWarningLogged = true;
     }
 }
+

@@ -533,7 +533,9 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
             feature.geometry.type == "Point" && feature.geometry.coordinates is JArray &&
             ((JArray)feature.geometry.coordinates).Count > 2) return false;
         string error;
-        if (!GeoJsonPolygonValidator.TryNormalizeFeature(feature, out error)) return false;
+        // Validation must not alter the dispatch payload: acknowledgement hashes
+        // must describe the same geographic data that was saved locally.
+        if (!GeoJsonPolygonValidator.TryNormalizeFeature(GeoJsonOutbox.Clone(feature), out error)) return false;
         return CoordinatesAreFinite(feature.geometry);
     }
 
@@ -579,3 +581,4 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
         OnSyncStatus?.Invoke(status);
     }
 }
+

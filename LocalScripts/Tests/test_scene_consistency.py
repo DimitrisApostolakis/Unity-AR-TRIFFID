@@ -81,6 +81,37 @@ def edit_raw(directory, mutate):
         w=csv.DictWriter(stream,fieldnames=scene.RAW_HEADER);w.writeheader();w.writerows(rows)
 
 class SceneTests(unittest.TestCase):
+    def test_repeat_keeps_exact_inputs_and_threshold_and_updates_source_provenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            _,baseline=prepare_test_folder(Path(temporary))
+            numerical.dump(baseline/'scene_runtime.json',{'schema_version':1,'completed':True,'source_state_restored':True,'max_cycles':100,'output_sha256':{}})
+            before={p.name:p.read_bytes() for p in baseline.iterdir() if p.is_file()}
+            repeat=Path(temporary)/'repeat';scene.repeat_from_capture(baseline,repeat)
+            for name in ['alignment.json','fixture.geojson','plan.json','expected.csv']:
+                self.assertEqual((repeat/name).read_bytes(),before[name])
+            old=json.loads(before['prepared_scene.json']);new=json.loads((repeat/'prepared_scene.json').read_text())
+            self.assertEqual(new['threshold_m'],old['threshold_m'])
+            self.assertTrue(new['require_exact_stored_coordinates']);self.assertTrue(new['require_explicit_edit_checks'])
+            self.assertEqual(new['comparison_baseline']['prepared_sha256'],numerical.digest(baseline/'prepared_scene.json'))
+            self.assertEqual(before,{p.name:p.read_bytes() for p in baseline.iterdir() if p.is_file()})
+            with self.assertRaises(FileExistsError):scene.repeat_from_capture(baseline,repeat)
+            (baseline/'fixture.geojson').write_text('{}')
+            with self.assertRaises(ValueError):scene.repeat_from_capture(baseline,Path(temporary)/'corrupt')
+
+    @unittest.skipUnless(importlib.util.find_spec('pyproj'),'Install requirements-experiments.txt')
+    def test_exact_storage_check_rejects_sub_tolerance_drift(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            _,capture=prepare_test_folder(Path(temporary));fabricated_capture(capture)
+            manifest=json.loads((capture/'prepared_scene.json').read_text());manifest['require_exact_stored_coordinates']=True
+            numerical.dump(capture/'prepared_scene.json',manifest)
+            def change(rows):
+                row=next(r for r in rows if r['phase']=='cycle' and r['cycle']=='100' and r['scope']=='normal')
+                row['stored_height']=str(float(row['stored_height'])+0.000001)
+            edit_raw(capture,change);rehash(capture)
+            result=scene.analyze(capture,make_plot=False)
+            self.assertFalse(result['normal_pass']);self.assertFalse(result['stored_coordinates_pass'])
+            self.assertEqual(result['exact_stored_coordinate_mismatches']['normal'],1)
+
     def test_selection_spans_boundaries_and_is_deterministic_without_duplicates(self):
         rows=mesh_rows();selected=scene.select_locations(rows+rows)
         self.assertEqual(selected,scene.select_locations(rows));self.assertEqual(len({tuple(r[k] for k in ['cx','cy','cz']) for r in selected}),30)
@@ -181,3 +212,4 @@ class SceneTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):scene.pack(run)
 
 if __name__=='__main__':unittest.main()
+

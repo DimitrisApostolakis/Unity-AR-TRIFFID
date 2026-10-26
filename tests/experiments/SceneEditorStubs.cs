@@ -56,6 +56,7 @@ namespace UnityEngine
         public float magnitude { get { return (float)Math.Sqrt(x*x+y*y+z*z); } }
         public static Vector3 operator *(Vector3 v, float f) { return new Vector3(v.x*f,v.y*f,v.z*f); }
         public static Vector3 operator /(Vector3 v, float f) { return v*(1/f); }
+        public static Vector3 operator +(Vector3 a, Vector3 b) { return new Vector3(a.x+b.x,a.y+b.y,a.z+b.z); }
     }
     public struct Quaternion
     {
@@ -96,6 +97,8 @@ public class JsonSpawner : UnityEngine.MonoBehaviour
     public UnityEngine.GameObject nodePrefab;
     public List<PrefabEntry> prefabEntries;
     public void SpawnFromJson() { }
+    public void BeginFeatureEdit(UnityEngine.Transform node) { }
+    public bool SyncData(PointData data, UnityEngine.Transform node) { return false; }
     public struct Vector3Double { public double lon,lat,alt; }
     public Vector3Double ColmapToWgs84(UnityEngine.Vector3 p) { return new Vector3Double(); }
 }
@@ -107,3 +110,4 @@ public class FloatingIcon : UnityEngine.MonoBehaviour
 }
 public class PointData : UnityEngine.MonoBehaviour { }
 public class RuntimeLine : UnityEngine.MonoBehaviour { public bool IsDraft; public int NodeCount; }
+

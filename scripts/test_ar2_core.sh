@@ -72,3 +72,22 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
     "$repo_root/tests/experiments/SceneEditorStubs.cs" \
     "$repo_root/tests/experiments/SceneCollectorSafetyTests.cs"
 "$mono_bin" "${mono_options[@]}" "$build_dir/AR2.SceneCollectorTests.exe"
+
+# Production save preparation, vertex commits and both XR event handlers.
+"${compiler[@]}" -langversion:latest -warnaserror -out:"$build_dir/AR2.PersistenceTests.exe" -r:"$json_dll" \
+    "$runtime_dir/Features/Model/GeoJsonDataModels.cs" \
+    "$runtime_dir/Features/Model/GeoJsonPolygonValidator.cs" \
+    "$runtime_dir/Features/Model/GeoJsonVertexEdit.cs" \
+    "$runtime_dir/Features/Persistence/GeoJsonSyncState.cs" \
+    "$runtime_dir/Features/Persistence/GeoJsonAtomicFile.cs" \
+    "$runtime_dir/Features/Sync/GeoJsonPayloadParser.cs" \
+    "$runtime_dir/Features/Spawning/JsonSpawner.Persistence.cs" \
+    "$runtime_dir/Features/Spawning/JsonSpawner.FeatureEdits.cs" \
+    "$runtime_dir/Features/Presentation/FloatingIcon.cs" \
+    "$runtime_dir/Features/Presentation/MarkerInteractionRelay.cs" \
+    "$repo_root/tests/headless/PersistenceStubs.cs" \
+    "$repo_root/tests/headless/PersistenceRegressionTests.cs"
+fixture_args=()
+if [[ -n "${AR2_PERSISTENCE_FIXTURE:-}" ]]; then fixture_args=("$AR2_PERSISTENCE_FIXTURE"); fi
+"$mono_bin" "${mono_options[@]}" "$build_dir/AR2.PersistenceTests.exe" "${fixture_args[@]}"
+

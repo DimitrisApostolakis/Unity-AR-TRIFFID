@@ -72,7 +72,7 @@ public partial class JsonSpawner : MonoBehaviour
 
     private sealed class SaveStageTimings
     {
-        public double world, normalize, outbox, labels, serialize;
+        public double outbox, labels, serialize;
     }
 
     private static double MeasureSaveStage(string name, Action action)
@@ -153,7 +153,12 @@ public partial class JsonSpawner : MonoBehaviour
         public JArray coordArray;
         public Feature parentFeature;
         public bool isCentroid; 
-        public Transform parentCentroid; 
+        public Transform parentCentroid;
+        public bool editInProgress;
+        public Transform editStartParent;
+        public Vector3 editStartLocal;
+        public Vector3 editStartMapLocal;
+        public Vector3Double editStartGeographic;
     }
 
     private List<NodeMapping> nodeMappings = new List<NodeMapping>();
@@ -520,68 +525,6 @@ public partial class JsonSpawner : MonoBehaviour
         centroidTransform.position = newCenter;
     }
 
-    private void SyncWorldToJSON()
-    {
-        Transform parentRef = mapTransform != null ? mapTransform : transform;
-        HashSet<Feature> vertexHeightFeatures = new HashSet<Feature>();
-
-        foreach (var mapping in nodeMappings)
-        {
-            if (mapping == null || mapping.node == null || mapping.parentFeature == null)
-                continue;
-
-            PointData mappedData = mapping.node.GetComponent<PointData>();
-            if (mappedData != null && mappedData.elevationUnresolved)
-            {
-                // The displayed altitude is only a preview. Preserve the original
-                // geographic position and do not export an invented altitude.
-                if (mapping.parentFeature.properties != null)
-                {
-                    mapping.parentFeature.properties.elevationStatus = "unresolved";
-                    if (IsPointFeature(mapping.parentFeature)) mapping.parentFeature.properties.altitude_m = null;
-                }
-                if (!mapping.isCentroid && mapping.coordArray != null && IsCoordinateTuple(mapping.coordArray))
-                    while (mapping.coordArray.Count > 2) mapping.coordArray.RemoveAt(mapping.coordArray.Count - 1);
-                continue;
-            }
-            Vector3 localToMap = GetStableMapLocalPosition(mapping.node, parentRef);
-            Vector3Double wgs84 = ColmapToWgs84(localToMap);
-
-            if (!mapping.isCentroid && mapping.coordArray != null && mapping.coordArray.Count >= 2)
-            {
-                mapping.coordArray[0] = wgs84.lon;
-                mapping.coordArray[1] = wgs84.lat;
-
-                if (mapping.coordArray.Count >= 3)
-                    mapping.coordArray[2] = wgs84.alt;
-                else
-                    mapping.coordArray.Add(wgs84.alt);
-            }
-
-            if (!mapping.isCentroid && mapping.parentFeature.properties != null)
-            {
-                mapping.parentFeature.properties.altitude_m = (float)wgs84.alt;
-
-                if (IsPointFeature(mapping.parentFeature))
-                {
-                    PointData pointData = mapping.node.GetComponent<PointData>();
-                    if (pointData != null) StorePointHeightMetadata(mapping.parentFeature, pointData);
-                }
-                else if (SupportsPerVertexHeight(mapping.parentFeature))
-                {
-                    vertexHeightFeatures.Add(mapping.parentFeature);
-                }
-            }
-
-            SyncPointDataFromWgs(mapping.node, wgs84);
-        }
-
-        EnforceClosedPolygonRings();
-
-        foreach (Feature feature in vertexHeightFeatures)
-            UpdateFeatureHeightAboveSurfaceData(feature);
-    }
-
     private static Vector3 GetStableMapLocalPosition(Transform node, Transform defaultMapTransform)
     {
         if (node == null)
@@ -607,19 +550,19 @@ public partial class JsonSpawner : MonoBehaviour
             return;
 
         bool changed = false;
-        if (Math.Abs(data.longitude - wgs.lon) > 1e-9)
+        if (data.longitude != wgs.lon)
         {
             data.longitude = wgs.lon;
             changed = true;
         }
 
-        if (Math.Abs(data.latitude - wgs.lat) > 1e-9)
+        if (data.latitude != wgs.lat)
         {
             data.latitude = wgs.lat;
             changed = true;
         }
 
-        if (Math.Abs(data.altitude - wgs.alt) > 1e-6)
+        if (data.altitude != wgs.alt)
         {
             data.altitude = wgs.alt;
             changed = true;
@@ -627,56 +570,6 @@ public partial class JsonSpawner : MonoBehaviour
 
         if (changed)
             data.NotifyDataChanged();
-    }
-
-    private void EnforceClosedPolygonRings()
-    {
-        if (currentRootData == null || currentRootData.features == null) return;
-        foreach (Feature feature in currentRootData.features)
-        {
-            string error;
-            if (!GeoJsonPolygonValidator.TryNormalizeFeature(feature, out error))
-                throw new InvalidDataException("Feature " + feature.id + ": " + error);
-        }
-        LastValidationError = null;
-    }
-
-    private static void EnsureRingClosed(JArray ring)
-    {
-        if (ring == null || ring.Count == 0)
-            return;
-
-        if (!(ring[0] is JArray first) || first.Count < 2)
-            return;
-
-        JArray closing = new JArray
-        {
-            first[0].Value<double>(),
-            first[1].Value<double>(),
-            first.Count >= 3 ? first[2].Value<double>() : 0d
-        };
-
-        if (!(ring[ring.Count - 1] is JArray last) || last.Count < 2)
-        {
-            ring.Add(closing);
-            return;
-        }
-
-        bool alreadyClosed = Math.Abs(first[0].Value<double>() - last[0].Value<double>()) < 1e-10 &&
-                             Math.Abs(first[1].Value<double>() - last[1].Value<double>()) < 1e-10;
-
-        if (alreadyClosed)
-        {
-            // Keep the original coordinate array instance because nodeMappings
-            // references it directly for live vertex updates.
-            last.Clear();
-            foreach (JToken value in closing)
-                last.Add(value);
-        }
-        else
-        {
-            ring.Add(closing);
-        }
     }
 
     private bool TryGetLatestMqttRuntimeMarker(out GameObject markerObject, out PointData markerData)
@@ -778,3 +671,4 @@ public partial class JsonSpawner : MonoBehaviour
     // Filters
 
 }
+

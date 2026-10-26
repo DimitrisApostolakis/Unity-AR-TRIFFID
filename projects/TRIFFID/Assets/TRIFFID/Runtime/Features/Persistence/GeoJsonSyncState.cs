@@ -50,14 +50,11 @@ public static class GeoJsonOutbox
         }
         root.syncState = new GeoJsonSyncState();
         if (!existingSnapshot) return;
-        // Old files are a local backup until a successful server comparison.
-        // Never upload them blindly or recreate records deleted by the server.
+        // Loading is observation, not an edit. Retain a baseline without creating
+        // operations. A later edit with no confirmed server ID must reconcile.
         foreach (Feature feature in root.features.Where(f => f != null && !string.IsNullOrWhiteSpace(f.id)))
         {
-            GeoJsonPendingEdit edit = NewEdit(root.syncState, feature.id, "reconcile", feature, Fingerprint(feature));
-            edit.status = "reconcile";
-            edit.error = "Legacy local snapshot needs server comparison.";
-            root.syncState.pending.Add(edit);
+            root.syncState.acknowledgedHashes[feature.id] = Fingerprint(feature);
         }
     }
 
@@ -102,6 +99,7 @@ public static class GeoJsonOutbox
             if (previous == null && baseline == currentHash) continue;
 
             string kind = state.remoteIds.ContainsKey(feature.id) ? "update" : "create";
+            if (kind == "create" && baseline != null) kind = "reconcile";
             if (previous != null && previous.kind == "reconcile") { kind = "reconcile"; baseline = previous.baseHash; }
             if (kind == "create")
             {
@@ -109,6 +107,7 @@ public static class GeoJsonOutbox
                 if (string.IsNullOrEmpty(feature.properties.clientFeatureId)) feature.properties.clientFeatureId = feature.id;
             }
             GeoJsonPendingEdit next = NewEdit(state, feature.id, kind, feature, baseline);
+            if (kind == "reconcile") next.status = "reconcile";
             next.notBeforeUtcTicks = now.AddSeconds(Math.Max(0d, debounceSeconds)).Ticks;
             PreserveUncertainty(previous, next);
             if (previous != null) state.pending.Remove(previous);
@@ -312,8 +311,12 @@ public static class GeoJsonOutbox
             seen.Add(id);
             GeoJsonPendingEdit pending = Find(local, id);
             Feature incoming = Clone(raw);
-            incoming.id = id;
-            if (incoming.properties != null) incoming.properties.id = id;
+            // Rewrite identity only when binding a confirmed local alias.
+            if (!string.Equals(id, raw.id, StringComparison.Ordinal))
+            {
+                incoming.id = id;
+                if (incoming.properties != null) incoming.properties.id = id;
+            }
             if (pending != null) pending.remoteConflictId = raw.id;
             if (pending != null && !string.IsNullOrEmpty(clientId) && clientCounts[clientId] > 1)
             { Conflict(pending, incoming, "Several server records share this client feature ID."); continue; }
@@ -444,3 +447,4 @@ public static class GeoJsonOutbox
         return true;
     }
 }
+

@@ -6,7 +6,7 @@ protocol remains a draft; final domains/tolerances and study design need locking
 | Experiment | Evidence collected | Remaining |
 | --- | --- | --- |
 | E1 numerical conversions | Production GeoUtils in headless Mono and native Unity Editor 6000.3.7f1, 22,719 samples in each direction, independent PROJ comparisons | Final supported domain/tolerance lock; additional sites/devices if claimed |
-| E2 map manipulation / persistence | Existing regressions; native scene collector and prepared pilot procedure | Run the collector locally, inspect deviations/outbox operations, extended cycles, manual replay and actual network no-op trial |
+| E2 map manipulation / persistence | Failed native 100-cycle capture retained; coordinate-preserving persistence fix and headless regressions | Repeat the same native pilot with fresh source provenance, then extended cycles, manual replay and actual network no-op trial |
 | E3 surface-relative height | Synthetic native regression checks and collider-state regression coverage | Batch metrics across poses, slope/misses/disabled colliders/multilevel cases and reference measured heights |
 | E4 geographic registration / representation | Calibration fit statistics only (not held-out accuracy) | Independent checkpoints, reference uncertainty/datum and mesh-versus-splat comparison |
 | E5 synchronization faults | One guided real offline delete/create/reconnect/restart scenario passed; core/outbox/coordinator regressions | Two-client fault matrix, explicit final-state oracles, repeated trials, latency, duplicates/lost edits/conflicts and race outcomes |
@@ -40,5 +40,13 @@ This establishes sampled numerical conversion consistency. It does not measure
 physical geographic accuracy, scene manipulation, load/save drift, height,
 network reliability, frame rate or user performance.
 
-Next: [run the native scene consistency pilot](SCENE_CONSISTENCY_EXPERIMENT.md).
+The E2 capture `Capture_20261026T032049Z_f1ec03c8.zip` completed with restored
+source state but failed the no-op criteria. It produced 4,474 new outbox operations
+overall, including 4,364 in normal measured poses/cycles after warmup. The archive
+remains the failed comparison baseline. The fix retains geographic feature data
+on load/save and commits only explicitly edited vertices. No post-fix native
+100-cycle result is available yet.
+
+Next: [repeat the native scene consistency pilot](SCENE_CONSISTENCY_EXPERIMENT.md).
 The full design remains in [PAPER_EVALUATION_PROTOCOL.md](PAPER_EVALUATION_PROTOCOL.md).
+
