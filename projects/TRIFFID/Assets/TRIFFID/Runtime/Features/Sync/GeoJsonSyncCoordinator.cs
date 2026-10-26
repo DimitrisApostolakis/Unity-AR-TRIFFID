@@ -220,6 +220,14 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
             if (!NeedsLocalInspection()) continue;
             Root local;
             if (!Read(out local)) continue;
+            // A durable snapshot can already match the server while a fresh
+            // scene has no feature objects. Restore the backup independently
+            // of whether a later GET changes its content, also while offline.
+            if (!jsonSpawner.HasLoadedFeatureCollection && File.Exists(saveFileAbsolutePath))
+            {
+                jsonSpawner.SpawnFromJson();
+                if (IsLocalBusy()) continue;
+            }
             int version = jsonSpawner.LocalPersistenceVersion;
             string before = JsonConvert.SerializeObject(local);
             if (restorePendingState) GeoJsonOutbox.RestoreAfterRestart(local);
@@ -291,7 +299,8 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
                 continue;
             }
             bool contentChanged = originalFeatures != JsonConvert.SerializeObject(local.features);
-            if (merged && !Commit(local, version, contentChanged))
+            bool initializeScene = !jsonSpawner.HasLoadedFeatureCollection;
+            if ((merged || initializeScene) && !Commit(local, version, contentChanged || initializeScene))
             { remoteSnapshotRequired = true; continue; }
             remoteSnapshotRequired = false;
             if (verboseLogs)

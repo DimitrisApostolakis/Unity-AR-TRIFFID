@@ -14,6 +14,53 @@ public static class CoordinatorRegressionTests
     public static int Run()
     {
         passed=failed=0;
+        Test("a fresh scene restores an unchanged saved collection without uploads or observer acknowledgement", () =>
+        {
+            Feature original=Point("a",1);
+            using(Fixture f=new Fixture(Clean(original),original))
+            {
+                f.spawner.HasLoadedFeatureCollection=false;
+                f.worker.RefreshFromServer();
+                f.Until(()=>f.api.fetchCount==1); f.Steps(20);
+                Check(f.spawner.HasLoadedFeatureCollection && f.spawner.respawns==1);
+                Check(f.api.createCount==0 && f.api.updateCount==0 && f.api.remoteAcknowledgements==0);
+                int writes=f.worker.LocalSnapshotWriteCount;
+                f.Steps(50); Check(f.spawner.respawns==1 && f.worker.LocalSnapshotWriteCount==writes);
+            }
+        });
+        Test("a fresh scene restores its local backup while the server is unavailable", () =>
+        {
+            Feature original=Point("a",1);
+            using(Fixture f=new Fixture(Clean(original),original))
+            {
+                f.spawner.HasLoadedFeatureCollection=false; f.api.offline=true; f.worker.RefreshFromServer();
+                f.Steps(30);
+                Check(f.spawner.HasLoadedFeatureCollection && f.spawner.respawns==1 && f.Load().features.Count==1);
+                Check(f.api.createCount==0 && f.api.updateCount==0 && f.api.remoteAcknowledgements==0);
+            }
+        });
+        Test("an empty server initializes a fresh scene even without a saved snapshot", () =>
+        {
+            using(Fixture f=new Fixture(Empty()))
+            {
+                File.Delete(f.spawner.path); f.spawner.HasLoadedFeatureCollection=false;
+                f.worker.RefreshFromServer(); f.Until(()=>f.spawner.HasLoadedFeatureCollection); f.Steps(20);
+                Check(f.spawner.respawns==1 && f.Load().features.Count==0);
+                Check(f.api.createCount==0 && f.api.updateCount==0 && f.api.remoteAcknowledgements==0);
+            }
+        });
+        Test("a server started after the app populates a fresh scene on reconnection", () =>
+        {
+            using(Fixture f=new Fixture(Empty(),Point("a",1)))
+            {
+                File.Delete(f.spawner.path); f.spawner.HasLoadedFeatureCollection=false;
+                f.api.offline=true; f.worker.RefreshFromServer(); f.Steps(20);
+                Check(!f.spawner.HasLoadedFeatureCollection && f.spawner.respawns==0);
+                f.api.offline=false; Set(f.worker,"nextRemoteCheck",DateTime.MinValue);
+                f.Until(()=>f.spawner.HasLoadedFeatureCollection);
+                Check(f.Load().features.Count==1 && f.spawner.respawns==1 && f.api.createCount==0);
+            }
+        });
         Test("idle coordinator does not repeatedly parse or write unchanged JSON", () =>
         {
             Feature original=Point("a",1);

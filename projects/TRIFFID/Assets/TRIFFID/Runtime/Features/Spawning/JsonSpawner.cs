@@ -426,6 +426,8 @@ public partial class JsonSpawner : MonoBehaviour
 
     internal int LocalPersistenceVersion => dataVersion;
 
+    internal bool HasLoadedFeatureCollection => currentRootData?.features != null;
+
     internal bool HasPendingLocalPersistence =>
         saveInProgress || saveQueued || dataVersion > lastSavedVersion;
 

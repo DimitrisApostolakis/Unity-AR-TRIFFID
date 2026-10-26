@@ -39,6 +39,7 @@ public sealed class JsonSpawner
     public string path;
     public bool HasPendingLocalPersistence;
     public bool HasActiveAnnotationDraft;
+    public bool HasLoadedFeatureCollection = true;
     public int LocalPersistenceVersion;
     public bool allowCommit=true;
     public int respawns;
@@ -48,7 +49,7 @@ public sealed class JsonSpawner
         if(!allowCommit || HasPendingLocalPersistence || version!=LocalPersistenceVersion) return false;
         GeoJsonAtomicFile.Write(path,json); return true;
     }
-    public void SpawnFromJson() { respawns++; }
+    public void SpawnFromJson() { respawns++; HasLoadedFeatureCollection=true; }
     public bool SpawnLatestMqttIcon(MqttLatestResponse response) { return true; }
 }
 
