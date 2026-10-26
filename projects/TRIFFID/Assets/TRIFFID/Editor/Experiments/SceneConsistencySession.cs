@@ -117,13 +117,32 @@ internal sealed class SceneConsistencySession : IDisposable
             var node = (Transform)type.GetField("node").GetValue(mapping);
             var feature = (Feature)type.GetField("parentFeature").GetValue(mapping);
             var coordinate = (JArray)type.GetField("coordArray").GetValue(mapping);
-            Node binding = coordinates.SingleOrDefault(x => ReferenceEquals(x.feature, feature) && ReferenceEquals(x.coordinate, coordinate));
+            Node binding = BindCoordinate(coordinates, result, feature, coordinate, node);
             if (node == null || binding == null) throw new InvalidDataException("A spawned vertex has no coordinate binding.");
             result.Add(new Node { transform = node, feature = feature, coordinate = coordinate, path = binding.path });
         }
         if (result.Count != coordinates.Count || result.Select(x => x.Key).Distinct().Count() != coordinates.Count)
             throw new InvalidDataException("Missing, skipped or duplicated fixture vertices.");
         return result;
+    }
+
+    internal static Node BindCoordinate(List<Node> coordinates, List<Node> resolved, Feature feature, JArray coordinate, Transform node)
+    {
+        Node exact = coordinates.SingleOrDefault(x => ReferenceEquals(x.feature, feature) && ReferenceEquals(x.coordinate, coordinate));
+        if (exact != null) return exact;
+        // Polygon normalization retains real vertex arrays but replaces the
+        // redundant closing tuple. That tuple shares the first vertex's node.
+        // Recognize only that verified alias; other detached bindings still fail.
+        if (coordinate == null || coordinate.Parent != null || feature.geometry.type != "Polygon") return null;
+        foreach (Node first in resolved.Where(x => ReferenceEquals(x.feature, feature) && x.transform == node))
+        {
+            JArray ring = first.coordinate.Parent as JArray;
+            if (ring == null || ring.Count < 4 || !ReferenceEquals(ring[0], first.coordinate)) continue;
+            JArray closing = ring[ring.Count - 1] as JArray;
+            if (!JToken.DeepEquals(first.coordinate, closing) || !JToken.DeepEquals(coordinate, closing)) continue;
+            return coordinates.SingleOrDefault(x => ReferenceEquals(x.feature, feature) && ReferenceEquals(x.coordinate, closing));
+        }
+        return null;
     }
 
     private static void Flatten(JToken token, string path, Feature feature, List<Node> result)

@@ -64,6 +64,7 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
 # validate guards/pose bookkeeping, not native matrix or scene measurements.
 "${compiler[@]}" -langversion:latest -warnaserror -out:"$build_dir/AR2.SceneCollectorTests.exe" -r:"$json_dll" \
     "$runtime_dir/Features/Model/GeoJsonDataModels.cs" \
+    "$runtime_dir/Features/Model/GeoJsonPolygonValidator.cs" \
     "$runtime_dir/Features/Persistence/GeoJsonSyncState.cs" \
     "$runtime_dir/Features/Persistence/GeoJsonAtomicFile.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SceneConsistencyCollector.cs" \

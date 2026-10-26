@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEditor;
@@ -40,6 +41,23 @@ public static class SceneCollectorSafetyTests
             throw new Exception("Scale target/translation/reflection bookkeeping failed.");
         type.GetMethod("Restore", BindingFlags.Instance|BindingFlags.NonPublic).Invoke(saved, new object[] { go.transform });
         if (!(bool)type.GetMethod("Matches", BindingFlags.Instance|BindingFlags.NonPublic).Invoke(saved, new object[] { go.transform })) throw new Exception("Transformed pose did not restore.");
+        passed++;
+        var ring = new JArray(new JArray(23d,37d,100d), new JArray(23.001d,37d,100d), new JArray(23d,37.001d,100d), new JArray(23d,37d,100d));
+        var polygonCoordinates = new JArray(); polygonCoordinates.Add(ring);
+        var feature = new Feature { id="polygon", geometry=new Geometry { type="Polygon", coordinates=polygonCoordinates } };
+        var oldClosing = (JArray)ring[3];
+        var first = new SceneConsistencySession.Node { feature=feature,coordinate=(JArray)ring[0],transform=go.transform,path="0/0" };
+        string error;
+        if (!GeoJsonPolygonValidator.TryNormalizeFeature(feature,out error)) throw new Exception(error);
+        var closing = new SceneConsistencySession.Node { feature=feature,coordinate=(JArray)ring[3],path="0/3" };
+        var current = new List<SceneConsistencySession.Node> { first, closing };
+        var resolved = new List<SceneConsistencySession.Node> { first };
+        if (!ReferenceEquals(SceneConsistencySession.BindCoordinate(current,resolved,feature,oldClosing,go.transform),closing))
+            throw new Exception("Normalized polygon closure lost its shared-node identity.");
+        passed++;
+        if (SceneConsistencySession.BindCoordinate(current,resolved,feature,new JArray(24d,38d,100d),go.transform)!=null ||
+            SceneConsistencySession.BindCoordinate(current,resolved,feature,oldClosing,new GameObject("unrelated").transform)!=null)
+            throw new Exception("An unrelated orphan vertex was accepted as a ring closure.");
         passed++;
         Console.WriteLine("Scene collector compilation and safety bookkeeping: " + passed + " passed (engine doubles; no native measurement).");
         return 0;
