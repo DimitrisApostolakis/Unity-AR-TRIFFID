@@ -7,10 +7,10 @@ protocol remains a draft; final domains/tolerances and study design need locking
 | --- | --- | --- |
 | E1 numerical conversions | Production GeoUtils in headless Mono and native Unity Editor 6000.3.7f1, 22,719 samples in each direction, independent PROJ comparisons | Final supported domain/tolerance lock; additional sites/devices if claimed |
 | E2 map manipulation / persistence | Native 100- and 1,000-cycle captures passed normal-position and exact geographic-persistence checks; active-network no-op capture verified; failed original baseline retained | Manual XR replay; far-origin stress display errors remain a measured limitation |
-| E3 surface-relative height | Synthetic native regression checks; new 2,160-observation in-app collector/analyzer ready | Collect/verify the batch across poses, slopes, misses, disabled colliders and intended floors; independent measured heights remain separate |
+| E3 surface-relative height | Native 2,160-observation batch verified: ordinary-transform single-level max 1.298 mm, but overall FAILED_NORMAL with 96 nonuniform-hierarchy failures; floor/stress failures retained | Same-batch engine-version comparison for matching MeshCollider bug; intended-floor and far-origin limitations; independent measured heights remain separate |
 | E4 geographic registration / representation | Calibration fit statistics only (not held-out accuracy) | Independent checkpoints, reference uncertainty/datum and mesh-versus-splat comparison |
 | E5 synchronization faults | Native online no-op + one-point-edit capture verified; new isolated offline-update/recovery observer ready | Collect recovery pilot, then create/delete/restart, lost-response and repeated two-client fault matrix; instrument callback latency separately |
-| E6 polygon validation | Validator/regressions; native eleven-fixture table/export ready | Collect/verify fixture table and exercise draft/UI rejection behavior |
+| E6 polygon validation | Native eleven-fixture table/export verified, all passed acceptance/winding/closure/metadata checks | Exercise draft/UI rejection behavior; validator checks alone are not UI evidence |
 | E7 user placement / workload / usability | No participant experiment collected; studies deferred by user | Resume participant protocol/design later |
 | E8 scale / performance | New native Editor frame/save collector ready with baseline and 10/100/1,000 mixed-geometry workloads | Collect/verify Editor pilot; standalone build/device frame-time captures, manipulation and sync-time scaling remain separate |
 
@@ -85,6 +85,20 @@ pilot, not the repeated fault/restart/two-client experiment.
 
 Archive SHA-256:
 `e7de7577a6459fe05f184bdc2ee6c76bc5da8893cd7f6db3073010e1899a65e4`.
+
+## Verified native height/geometry batch
+
+See the [full results and diagnosis](results/APP_NUMERICS_20261026.md). Capture
+`AppNumerics_20261026T204743Z_0d4b3b69` is a completed, source-restored, verified
+**failure baseline** on 6000.3.7f1. All 52 source hashes match. Its 11 polygon and
+63 native core fixtures passed. All 96 normal height failures are restricted to
+the sheared nonuniform hierarchy (pose 4); max error is 1.221448 m. The 480
+ordinary-transform single-level observations stayed below 1.298 mm. No criterion
+has been relaxed. Intended-floor and far-origin failures remain separate.
+
+Unity 6000.3.15f1 release notes describe a matching MeshCollider nonuniform-scale
+fix (UUM-139681). Repeating the unchanged batch on a project copy in that version
+is the next controlled diagnostic; this has not yet been measured.
 
 Next: [run the in-app technical captures](APP_NUMERICAL_EXPERIMENTS.md).
 The full design remains in [PAPER_EVALUATION_PROTOCOL.md](PAPER_EVALUATION_PROTOCOL.md).
