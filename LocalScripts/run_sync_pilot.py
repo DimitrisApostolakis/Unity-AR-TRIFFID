@@ -122,7 +122,7 @@ def require_edit(root, remote, baseline, target, audit):
         raise existing.TestFailure('The single-edit trial created/deleted feature IDs')
     if any(local[key] != before[key] or server[key] != before[key] for key in before if key != target):
         raise existing.TestFailure('The single edit changed an unrelated feature, including the foreign-class probe')
-    for value in [local[target], server[target]]:
+    for side,value in [('local',local[target]), ('server',server[target])]:
         geometry = value.get('geometry') or {}
         coordinates = geometry.get('coordinates')
         if geometry.get('type') != 'Point' or not isinstance(coordinates,list) or len(coordinates) != 3 or any(
@@ -130,8 +130,13 @@ def require_edit(root, remote, baseline, target, audit):
             raise existing.TestFailure('The target must retain finite point coordinates')
         allowed = {'altitude_m','height_above_surface_m','heightSource','heightStatus','elevationStatus'}
         protected = lambda feature:{k:v for k,v in (feature.get('properties') or {}).items() if k not in allowed}
-        if protected(value) != protected(before[target]):
-            raise existing.TestFailure('The position edit changed an unrelated target property')
+        old,new = protected(before[target]),protected(value)
+        if new != old:
+            changes = {'added':{k:new[k] for k in new.keys()-old.keys()},
+                       'removed':{k:old[k] for k in old.keys()-new.keys()},
+                       'changed':{k:{'before':old[k],'after':new[k]} for k in old.keys()&new.keys() if old[k] != new[k]}}
+            raise existing.TestFailure('The position edit changed an unrelated target property ('+side+'): '+
+                                       json.dumps(changes,sort_keys=True,ensure_ascii=False))
     writes = feature_writes(audit)
     if any(r.get('method') != 'PATCH' or r.get('path') != FEATURES+'/'+target or
            not r.get('user_agent','').startswith('UnityPlayer') for r in writes):
@@ -181,6 +186,9 @@ def prepare(source, output, port):
         if digest(source/name) != h: raise existing.TestFailure('Changed input: '+name)
     seed = {'type':'FeatureCollection','features':copy.deepcopy(load(source/'fixture.geojson')['features'])}
     target = next(f for f in seed['features'] if f.get('geometry',{}).get('type') == 'Point')
+    if not isinstance(target.get('properties'),dict): raise existing.TestFailure('The target needs feature properties')
+    original_class = target['properties'].get('class')
+    target['properties']['class'] = 'fire'
     if FOREIGN_ID in feature_map(seed): raise existing.TestFailure('Foreign probe ID collision')
     seed['features'].append({'type':'Feature','id':FOREIGN_ID,'vendor':{'Case':'Kept','values':[True,None,7]},
         'properties':{'id':'Property_ID_KeepCase','class':'__AR2_Unsupported_Probe__','source':'Mission-A',
@@ -190,7 +198,8 @@ def prepare(source, output, port):
     output.mkdir(parents=True,exist_ok=False)
     write(output/'server_seed.json',seed)
     shutil.copyfile(source/'alignment.json',output/'alignment.json')
-    value = {'schema_version':1,'prepared_id':uuid.uuid4().hex,'port':port,'target_id':str(target['id']),
+    value = {'schema_version':1,'prepared_id':uuid.uuid4().hex,'port':port,'target_id':str(target['id']),'target_class':'fire',
+        'fixture_changes':[{'feature_id':str(target['id']),'path':'properties.class','before':original_class,'after':'fire'}],
         'created_utc':datetime.now(timezone.utc).isoformat(),'source_capture':source.name,
         'source_capture_runtime_sha256':digest(source/'scene_runtime.json'),
         'files_sha256':{n:digest(output/n) for n in ['server_seed.json','alignment.json']},
@@ -289,6 +298,7 @@ def run(folder, timeout=300, minimum=5, quiet=3):
             'observation_unity_sync_reads':observed_reads,'audit_end':len(records(server.audit))}
         phase('awaiting_edit');before_edit = report['noop']['audit_end']
         print('\nSTEP 2: Tools > Experiments > Synchronization > Begin Point Edit.',flush=True)
+        print('The helper selects the test point. Enable the Fire filter to see the fire marker.',flush=True)
         print('Then move ONLY point ID '+prepared['target_id']+' once in Unity and RELEASE it. Make no other edits.',flush=True)
         def edit_converged():
             actions = records(action_file)
@@ -318,6 +328,7 @@ def run(folder, timeout=300, minimum=5, quiet=3):
     except (Exception,KeyboardInterrupt) as error:
         report['error'] = str(error) or type(error).__name__
         print('FAILED: '+report['error'],file=sys.stderr,flush=True)
+        print('Failed capture: '+str(capture),file=sys.stderr,flush=True)
         raise
     finally:
         server.stop();phase('finished' if report['completed'] else 'failed')

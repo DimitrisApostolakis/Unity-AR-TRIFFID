@@ -5,8 +5,11 @@ editing workflow, durable outbox, synchronization coordinator and local HTTP
 server. It records real request bodies and final local/server data. It does not
 simulate Unity, mutate its saved JSON, or acknowledge operations for it.
 
-The prepared server database is a private copy of the completed E2 fixture,
-plus an unsupported-class probe with mixed-case IDs, extra properties and
+The prepared server database is a private copy of the completed E2 fixture.
+The target point's class is deliberately changed to `fire` during preparation
+so it is easy to recognize; the manifest records that fixture change. Its ID,
+coordinates and other properties remain unchanged. The database also includes
+an unsupported-class probe with mixed-case IDs, extra properties and
 nontrivial numeric precision. The probe should remain in both data copies and
 stay unrendered. An unsupported-class warning is expected. It is not a deletion.
 
@@ -50,10 +53,13 @@ stay unrendered. An unsupported-class warning is expected. It is not a deletion.
 
    **Tools > Experiments > Synchronization > Begin Point Edit**
 
+   This selects and pings the exact target in the Hierarchy without moving it.
    Then move **only the printed target ID** once using the application's normal
    marker interaction, and release it. The supplied target is `e2_point_00`,
-   normally spawned as `animal_e2_point_00` in the Hierarchy. Enable the Animal
-   filter if necessary. Do not move it through the Inspector or edit its JSON:
+   now spawned as `fire_e2_point_00` in the Hierarchy. Enable the Fire filter.
+   To locate it before recording, select `CoordinatesLogic` and use **Tools >
+   Experiments > Synchronization > Select Test Point**. Select `CoordinatesLogic`
+   again before invoking either recording action. Do not move it through the Inspector or edit its JSON:
    the production commit requires the normal interaction start/release events.
 8. Keep Play mode unpaused while Python verifies delivery and a second quiet
    confirmation window covering two configured polling intervals. A pass
@@ -78,6 +84,12 @@ non-pilot save paths, inactive sync/API components, non-localhost endpoints,
 wrong ports, and actions outside the runner's current phase. It writes no scene
 or asset file and changes no networking configuration itself.
 
+You may grab, rotate or scale the map to make the target reachable. For this
+single-edit pilot, position the map before **Begin Point Edit**, release it and
+let saving settle, then keep it still during the point edit and confirmation.
+Map movement must not change geographic feature data or create outbox operations.
+This convenience does not constitute a separate recorded map-manipulation trial.
+
 ## Prepare another isolated run
 
 For a new run/folder, use a completed E2 capture from the same site/calibration:
@@ -86,8 +98,10 @@ For a new run/folder, use a completed E2 capture from the same site/calibration:
 python LocalScripts/run_sync_pilot.py --prepare-from-capture "D:\AR2\Capture_20261026T183906Z_49d86a10" --output "D:\AR2\PreparedSyncPilot_02"
 ```
 
-Preparation validates its input hashes, retains its coordinates and adds only
-the explicitly declared foreign-class probe. It records current source hashes.
+Preparation validates its input hashes, retains all coordinates, changes only
+the declared target class to `fire`, and adds the foreign-class probe. It records
+current source hashes. Use a newly prepared archive/folder after pulling this
+change; the earlier animal-target archive contains different source hashes.
 The input folder is immutable after preparation; after code changes, prepare a
 new folder. The runner will not silently reuse an old client snapshot/outbox.
 

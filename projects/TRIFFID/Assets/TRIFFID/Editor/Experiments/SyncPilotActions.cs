@@ -20,6 +20,40 @@ public static class SyncPilotActions
     [MenuItem("Tools/Experiments/Synchronization/Begin Point Edit")]
     private static void BeginPointEdit() { Record(true); }
 
+    [MenuItem("Tools/Experiments/Synchronization/Select Test Point")]
+    private static void SelectTestPoint()
+    {
+        try
+        {
+            if (!EditorApplication.isPlaying || EditorApplication.isPaused)
+                throw new InvalidOperationException("Keep Play mode running and UNPAUSED for the network experiment.");
+            JsonSpawner source = Selection.activeGameObject == null ? null : Selection.activeGameObject.GetComponent<JsonSpawner>();
+            if (source == null) throw new InvalidOperationException("Select the JsonSpawner GameObject in the Hierarchy first.");
+            string root = Path.GetDirectoryName(Path.GetFullPath(source.saveFilePath));
+            if (Path.GetFileName(source.saveFilePath) != "unity_state.json")
+                throw new InvalidOperationException("Use the pilot's unity_state.json Save File Path.");
+            JObject prepared = JObject.Parse(File.ReadAllText(Path.Combine(root, "sync_pilot.json")));
+            SelectTarget(FindTarget(source, prepared.Value<string>("target_id")));
+        }
+        catch (Exception error) { Debug.LogException(error); }
+    }
+
+    private static PointData FindTarget(JsonSpawner source, string id)
+    {
+        if (string.IsNullOrEmpty(id)) throw new InvalidDataException("The pilot target ID is missing.");
+        Transform map = source.mapTransform != null ? source.mapTransform : source.transform;
+        PointData[] matches = map.GetComponentsInChildren<PointData>(true).Where(x => x.pointID == id).ToArray();
+        if (matches.Length != 1) throw new InvalidOperationException("Expected one loaded test point with ID " + id + ". Found " + matches.Length + ".");
+        return matches[0];
+    }
+
+    private static void SelectTarget(PointData target)
+    {
+        Selection.activeGameObject = target.gameObject;
+        EditorGUIUtility.PingObject(target.gameObject);
+        Debug.Log("[SyncPilot] Selected " + target.gameObject.name + ". Enable the Fire filter and move this marker through the normal application interaction. Editor selection does not move it.");
+    }
+
     private static void Record(bool edit)
     {
         try
@@ -47,6 +81,7 @@ public static class SyncPilotActions
             if (prepared.Value<int>("schema_version") != 1 || active.Value<string>("prepared_id") != prepared.Value<string>("prepared_id") ||
                 active.Value<string>("phase") != phase)
                 throw new InvalidOperationException("The Python runner is not waiting for this action. Follow its current prompt.");
+            PointData target = edit ? FindTarget(source, prepared.Value<string>("target_id")) : null;
             string captureName = active.Value<string>("capture");
             if (string.IsNullOrEmpty(captureName) || Path.GetFileName(captureName) != captureName || !captureName.StartsWith("Capture_", StringComparison.Ordinal))
                 throw new InvalidDataException("Invalid pilot capture path.");
@@ -93,6 +128,7 @@ public static class SyncPilotActions
                 ["features_before"] = JArray.FromObject(data.features) };
             File.AppendAllText(Path.Combine(capture, "unity_actions.jsonl"), action.ToString(Formatting.None) + "\n", new UTF8Encoding(false));
             if (!edit) source.SaveToJson();
+            else SelectTarget(target);
             Debug.Log(edit ? "[SyncPilot] Edit start recorded. Move only the target point printed by Python, then release it." :
                 "[SyncPilot] Unchanged save requested through JsonSpawner. Keep Play mode running and follow Python.");
         }

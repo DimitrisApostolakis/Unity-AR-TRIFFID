@@ -52,6 +52,11 @@ class PilotTests(unittest.TestCase):
             runner.prepare(source,output,8080)
             self.assertEqual(before,{p.name:p.read_bytes() for p in source.iterdir()})
             seed=runner.load(output/'server_seed.json');self.assertEqual(len(seed['features']),2)
+            expected=point('target');expected['properties']['class']='fire'
+            self.assertEqual(seed['features'][0],expected)
+            prepared=runner.load(output/'sync_pilot.json')
+            self.assertEqual(prepared['target_class'],'fire')
+            self.assertEqual(prepared['fixture_changes'],[{'feature_id':'target','path':'properties.class','before':'animal','after':'fire'}])
             self.assertEqual(seed['features'][1]['id'],runner.FOREIGN_ID)
             self.assertFalse((output/'unity_state.json').exists())
             with self.assertRaises(FileExistsError):runner.prepare(source,output,8080)
@@ -94,6 +99,18 @@ class PilotTests(unittest.TestCase):
             old,local,remote,audit=edit_case()
             local['features'][1 if key=='foreign' else 0]['properties']['source']='rewritten'
             with self.assertRaises(runner.existing.TestFailure):runner.require_edit(local,remote,old,'target',audit)
+
+    def test_property_failures_identify_side_key_and_values_without_relaxing_check(self):
+        for side in ['local','server']:
+            old,local,remote,audit=edit_case()
+            value=local if side=='local' else remote
+            value['features'][0]['properties']['source']='rewritten'
+            with self.assertRaisesRegex(runner.existing.TestFailure,'unrelated target property') as context:
+                runner.require_edit(local,remote,old,'target',audit)
+            message=str(context.exception)
+            self.assertIn('('+side+')',message)
+            details=json.loads(message.split(': ',1)[1])
+            self.assertEqual(details['changed']['source'],{'before':'Robot-A','after':'rewritten'})
 
     def test_nonfinite_or_wrong_geometry_cannot_pass_delivery(self):
         for coords in [[23,38,float('nan')],[],[23,38]]:

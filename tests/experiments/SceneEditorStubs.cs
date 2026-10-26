@@ -1,6 +1,7 @@
 // Compilation/safety-control doubles only. Never used to collect paper measurements.
 using System;
 using System.Collections.Generic;
+using System.Linq;
 namespace UnityEngine
 {
     public enum HideFlags { HideAndDontSave }
@@ -16,7 +17,7 @@ namespace UnityEngine
         public GameObject gameObject;
         public Transform transform { get { return gameObject.transform; } }
         public T GetComponent<T>() where T : class { return gameObject.GetComponent<T>(); }
-        public T[] GetComponentsInChildren<T>(bool inactive) { return new T[0]; }
+        public T[] GetComponentsInChildren<T>(bool inactive) { return gameObject.GetComponentsInChildren<T>(inactive); }
     }
     public class MonoBehaviour : Component { public bool isActiveAndEnabled = true; }
     public struct Scene
@@ -29,12 +30,13 @@ namespace UnityEngine
         public Transform transform;
         public Scene scene;
         public bool activeInHierarchy = true;
+        public Component[] children = new Component[0];
         private readonly Dictionary<Type, Component> components = new Dictionary<Type, Component>();
         public GameObject(string label = "stub") { name = label; transform = new Transform { gameObject = this, name = label }; }
         public void SetActive(bool value) { activeInHierarchy = value; }
         public T AddComponent<T>() where T : Component, new() { var c = new T { gameObject = this }; components[typeof(T)] = c; return c; }
         public T GetComponent<T>() where T : class { Component c; return components.TryGetValue(typeof(T), out c) ? c as T : null; }
-        public T[] GetComponentsInChildren<T>(bool inactive) { return new T[0]; }
+        public T[] GetComponentsInChildren<T>(bool inactive) { return children.OfType<T>().ToArray(); }
     }
     public class Transform : Component
     {
@@ -83,6 +85,7 @@ namespace UnityEditor
     public sealed class MenuItem : Attribute { public MenuItem(string name) { } }
     public static class EditorApplication { public static bool isPlaying, isPaused; }
     public static class Selection { public static UnityEngine.GameObject activeGameObject; }
+    public static class EditorGUIUtility { public static void PingObject(UnityEngine.Object value) { } }
     public static class EditorUtility
     {
         public static string OpenFolderPanel(string a,string b,string c) { return ""; }
@@ -111,7 +114,7 @@ public class FloatingIcon : UnityEngine.MonoBehaviour
     public UnityEngine.Transform mainMap;
     public bool IsBeingManipulated;
 }
-public class PointData : UnityEngine.MonoBehaviour { }
+public class PointData : UnityEngine.MonoBehaviour { public string pointID; }
 public class RuntimeLine : UnityEngine.MonoBehaviour { public bool IsDraft; public int NodeCount; }
 public class GeoJsonSyncCoordinator : UnityEngine.MonoBehaviour { }
 public class GeoJsonApiManager : UnityEngine.MonoBehaviour { }

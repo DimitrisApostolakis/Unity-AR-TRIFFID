@@ -73,6 +73,24 @@ public static class SceneCollectorSafetyTests
         if (!(Debug.LastException is InvalidOperationException) || !Debug.LastException.Message.Contains("Select"))
             throw new Exception("The synchronization helper accepted an unspecified JsonSpawner.");
         passed++;
+        var spawner = new GameObject("pilot source").AddComponent<JsonSpawner>();
+        spawner.mapTransform = new GameObject("pilot map").transform;
+        var targetPoint = new GameObject("fire_e2_point_00").AddComponent<PointData>();targetPoint.pointID="e2_point_00";
+        var otherPoint = new GameObject("animal_e2_point_01").AddComponent<PointData>();otherPoint.pointID="e2_point_01";
+        spawner.gameObject.children=new Component[] { otherPoint };
+        spawner.mapTransform.gameObject.children=new Component[] { otherPoint,targetPoint };
+        MethodInfo findTarget=typeof(SyncPilotActions).GetMethod("FindTarget",BindingFlags.Static|BindingFlags.NonPublic);
+        if (!ReferenceEquals(findTarget.Invoke(null,new object[] {spawner,"e2_point_00"}),targetPoint))
+            throw new Exception("The synchronization helper did not find the exact target within its map.");
+        passed++;
+        spawner.mapTransform.gameObject.children=new Component[] { otherPoint };
+        try { findTarget.Invoke(null,new object[] {spawner,"e2_point_00"}); throw new Exception("A missing test point was accepted."); }
+        catch (TargetInvocationException e) { if (!(e.InnerException is InvalidOperationException)) throw; }
+        passed++;
+        spawner.mapTransform.gameObject.children=new Component[] { targetPoint,targetPoint };
+        try { findTarget.Invoke(null,new object[] {spawner,"e2_point_00"}); throw new Exception("An ambiguous test point was accepted."); }
+        catch (TargetInvocationException e) { if (!(e.InnerException is InvalidOperationException)) throw; }
+        passed++;
         Console.WriteLine("Scene/sync collector compilation and safety bookkeeping: " + passed + " passed (engine doubles; no native measurement).");
         return 0;
     }
