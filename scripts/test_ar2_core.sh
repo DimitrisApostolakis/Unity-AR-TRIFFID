@@ -69,6 +69,7 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
     "$runtime_dir/Features/Persistence/GeoJsonAtomicFile.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SceneConsistencyCollector.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SceneConsistencySession.cs" \
+    "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SyncPilotActions.cs" \
     "$repo_root/tests/experiments/SceneEditorStubs.cs" \
     "$repo_root/tests/experiments/SceneCollectorSafetyTests.cs"
 "$mono_bin" "${mono_options[@]}" "$build_dir/AR2.SceneCollectorTests.exe"

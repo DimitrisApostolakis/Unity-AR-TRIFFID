@@ -18,7 +18,7 @@ namespace UnityEngine
         public T GetComponent<T>() where T : class { return gameObject.GetComponent<T>(); }
         public T[] GetComponentsInChildren<T>(bool inactive) { return new T[0]; }
     }
-    public class MonoBehaviour : Component { }
+    public class MonoBehaviour : Component { public bool isActiveAndEnabled = true; }
     public struct Scene
     {
         public string path;
@@ -72,9 +72,10 @@ namespace UnityEngine
     public sealed class Logger { public LogType filterLogType; }
     public static class Debug
     {
+        public static Exception LastException;
         public static Logger unityLogger=new Logger();
         public static void Log(object value) { }
-        public static void LogException(Exception error) { }
+        public static void LogException(Exception error) { LastException = error; }
     }
 }
 namespace UnityEditor
@@ -97,6 +98,8 @@ public class JsonSpawner : UnityEngine.MonoBehaviour
     public UnityEngine.GameObject nodePrefab;
     public List<PrefabEntry> prefabEntries;
     public void SpawnFromJson() { }
+    public bool HasActiveAnnotationDraft;
+    public void SaveToJson() { }
     public void BeginFeatureEdit(UnityEngine.Transform node) { }
     public bool SyncData(PointData data, UnityEngine.Transform node) { return false; }
     public struct Vector3Double { public double lon,lat,alt; }
@@ -110,4 +113,6 @@ public class FloatingIcon : UnityEngine.MonoBehaviour
 }
 public class PointData : UnityEngine.MonoBehaviour { }
 public class RuntimeLine : UnityEngine.MonoBehaviour { public bool IsDraft; public int NodeCount; }
+public class GeoJsonSyncCoordinator : UnityEngine.MonoBehaviour { }
+public class GeoJsonApiManager : UnityEngine.MonoBehaviour { }
 

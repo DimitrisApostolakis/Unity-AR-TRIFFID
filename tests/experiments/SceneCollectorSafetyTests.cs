@@ -59,7 +59,22 @@ public static class SceneCollectorSafetyTests
             SceneConsistencySession.BindCoordinate(current,resolved,feature,oldClosing,new GameObject("unrelated").transform)!=null)
             throw new Exception("An unrelated orphan vertex was accepted as a ring closure.");
         passed++;
-        Console.WriteLine("Scene collector compilation and safety bookkeeping: " + passed + " passed (engine doubles; no native measurement).");
+        MethodInfo syncAction = typeof(SyncPilotActions).GetMethod("SaveUnchanged", BindingFlags.Static|BindingFlags.NonPublic);
+        foreach (bool playing in new[] { false, true })
+        {
+            EditorApplication.isPlaying = playing; EditorApplication.isPaused = true;
+            Debug.LastException = null; syncAction.Invoke(null,null);
+            if (!(Debug.LastException is InvalidOperationException) || !Debug.LastException.Message.Contains("UNPAUSED"))
+                throw new Exception("The synchronization helper allowed inactive or paused Play mode.");
+            passed++;
+        }
+        EditorApplication.isPlaying=true;EditorApplication.isPaused=false;Selection.activeGameObject=null;
+        Debug.LastException=null;syncAction.Invoke(null,null);
+        if (!(Debug.LastException is InvalidOperationException) || !Debug.LastException.Message.Contains("Select"))
+            throw new Exception("The synchronization helper accepted an unspecified JsonSpawner.");
+        passed++;
+        Console.WriteLine("Scene/sync collector compilation and safety bookkeeping: " + passed + " passed (engine doubles; no native measurement).");
         return 0;
     }
 }
+
