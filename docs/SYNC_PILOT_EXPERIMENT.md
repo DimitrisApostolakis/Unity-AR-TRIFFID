@@ -107,6 +107,14 @@ new folder. The runner will not silently reuse an old client snapshot/outbox.
 
 ## Evidence and interpretation
 
+The reported fire-target run `Capture_20261026T194734Z_3b5d48db` failed because
+the server gained an absent `confidence` property with value null. Code inspection
+found that the PATCH builder serialized the typed Properties object separately,
+bypassing the feature-preserving converter. The builder now serializes the whole
+feature through that converter, retaining absent fields and foreign members.
+This corrects the diagnosed payload construction defect; a fresh native capture
+is still required. Enabling a marker collider for normal grabbing is allowed.
+
 Each capture contains the private server seed/database, initial and final Unity
 and server snapshots, all HTTP requests (including GET/status/MQTT traffic),
 Unity action markers, configuration exports, logs and a hashed `report.json`.

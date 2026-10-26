@@ -450,15 +450,7 @@ public class GeoJsonApiManager : MonoBehaviour
         }
 
         string url = BuildFeatureItemUrl(collectionUrl, id);
-        JObject patch = new JObject();
-
-        if (feature.geometry != null)
-            patch["geometry"] = JObject.FromObject(feature.geometry);
-
-        if (feature.properties != null)
-            patch["properties"] = JObject.FromObject(feature.properties);
-
-        patch["id"] = id;
+        JObject patch = GeoJsonPayloadParser.BuildUpdatePayload(feature, id);
 
         string payload = patch.ToString(Formatting.None);
         using (UnityWebRequest request = BuildRequest(url, "PATCH", payload))
@@ -749,3 +741,4 @@ public class GeoJsonApiManager : MonoBehaviour
         return GeoJsonPayloadParser.Parse(json, out droppedMissingClass);
     }
 }
+

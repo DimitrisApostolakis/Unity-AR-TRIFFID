@@ -3,6 +3,15 @@ using Newtonsoft.Json.Linq;
 
 public static class GeoJsonPayloadParser
 {
+    public static JObject BuildUpdatePayload(Feature feature, string remoteId)
+    {
+        // Serialize through the feature converter. Serializing Properties alone
+        // loses original foreign fields and inserts defaults for absent fields.
+        JObject payload = JObject.FromObject(feature);
+        if (!string.Equals(feature.id, remoteId, System.StringComparison.Ordinal)) payload["id"] = remoteId;
+        return payload;
+    }
+
     public static Root Parse(string json, out int droppedMissingClass)
     {
         droppedMissingClass = 0;

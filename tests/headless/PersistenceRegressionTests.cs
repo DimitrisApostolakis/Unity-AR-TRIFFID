@@ -27,6 +27,29 @@ public static class PersistenceRegressionTests
         {
             Test("foreign feature preserves IDs, precision, absent fields, geometry and nested extras", () =>
             { Check(JToken.DeepEquals(JObject.Parse(Foreign), Json(Read(Foreign)))); });
+            Test("point PATCH retains absent confidence after a deliberate coordinate edit", () =>
+            {
+                Feature feature=Read(@"{""type"":""Feature"",""id"":""e2_point_00"",""properties"":{""id"":""e2_point_00"",""class"":""fire"",""source"":""ground station""},""geometry"":{""type"":""Point"",""coordinates"":[23,38,100]}}");
+                string error;Check(GeoJsonVertexEdit.TryApply(feature,new[]{(JArray)feature.geometry.coordinates},23.1,38.1,101,out error));
+                feature.properties.altitude_m=101;
+                JObject patch=GeoJsonPayloadParser.BuildUpdatePayload(feature,feature.id);
+                Check(patch["properties"]["confidence"]==null);
+                Check(JToken.DeepEquals(patch,Json(feature)));
+            });
+            Test("PATCH preserves foreign fields and precision with numeric identity", () =>
+            {
+                Feature feature=Read(Foreign);
+                JObject patch=GeoJsonPayloadParser.BuildUpdatePayload(feature,feature.id);
+                Check(JToken.DeepEquals(Json(patch),JObject.Parse(Foreign)));
+                Check(JToken.DeepEquals(GeoJsonPayloadParser.BuildUpdatePayload(feature,"remote_42")["properties"],patch["properties"]));
+            });
+            Test("PATCH retains an explicitly null confidence without adding absent defaults", () =>
+            {
+                Feature feature=Read(@"{""id"":""A"",""properties"":{""class"":""fire"",""confidence"":null},""geometry"":{""type"":""Point"",""coordinates"":[23,38,100]}}");
+                JObject patch=GeoJsonPayloadParser.BuildUpdatePayload(feature,"A");
+                Check(JToken.DeepEquals(patch,Json(feature)));
+                Check(patch["properties"]["confidence"].Type==JTokenType.Null && patch["properties"]["source"]==null);
+            });
             Test("API parse and remote merge retain complete unsupported feature", () =>
             {
                 int ignored; Root remote=GeoJsonPayloadParser.Parse("{\"type\":\"FeatureCollection\",\"features\":["+Foreign+"]}",out ignored);
