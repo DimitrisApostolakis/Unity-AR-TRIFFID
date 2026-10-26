@@ -60,3 +60,24 @@ The two-level first-hit behavior and far-origin float limitations are separate
 from the nonuniform-hierarchy failure. An engine fix must not be assumed to
 resolve those cases. Surface fixtures establish synthetic numeric behavior,
 not real geographic accuracy, participant performance or HTTP reliability.
+
+## Controlled rerun on 6000.3.15f1
+
+Capture `AppNumerics_20261026T225150Z_bbcab042`, archive SHA-256
+`d54800556a3434aa1004bd4abfa8eb94e966b5ae0048386843ad20b50651e119`,
+passed the unchanged normal criteria. All 52 captured source hashes, alignment,
+pose matrices, polygon results and core-check output match the baseline. Source
+save hashes match before/after and across both runs. The budget remains 5 mm.
+
+All 600 normal single-level cases passed: median absolute height error
+0.001804 mm, p95 0.660659 mm, maximum 1.297507 mm. Maximum height-invariance
+error is 1.297981 mm, with zero exceedances. All 120 pose-4 cases passed, maximum
+0.025343 mm, compared with 96 failures in that pose on 6000.3.7f1. This controlled
+version comparison supports the matching engine-defect diagnosis and demonstrates
+that the observed normal failures are resolved in the updated editor.
+
+All 1,080 expected misses/status outcomes and all 2,160 collider-restoration
+checks passed. Polygons remain 11/11 and deterministic core checks 63/63.
+The lower-floor diagnostic still fails 300/300 cases (about 4 m error); far-origin
+stress still fails 180/360 outcomes. The first capture remains FAILED_NORMAL.
+No claim of physical geographic accuracy or independent repeated trials follows.

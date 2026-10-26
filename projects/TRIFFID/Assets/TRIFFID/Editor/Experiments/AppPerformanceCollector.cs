@@ -146,6 +146,7 @@ public static class AppPerformanceCollector
         }
         start=EditorApplication.timeSinceStartup;nextSave=Warmup+1;
         Event("phase_start",new JObject { ["extra_features"]=count,["condition"]=Conditions[phase],
+            ["phase_clock_start_seconds"]=start,
             ["fixture_renderers"]=overlay==null?0:overlay.GetComponentsInChildren<Renderer>(true).Count(x=>x.enabled&&x.gameObject.activeInHierarchy) });
     }
 

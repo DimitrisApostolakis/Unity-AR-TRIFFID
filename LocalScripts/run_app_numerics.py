@@ -157,7 +157,7 @@ def analyze_performance(folder,meta):
     require(meta.get('extra_feature_counts')==list(COUNTS) and meta.get('conditions')==list(CONDITIONS),'Changed workload plan')
     require(meta.get('warmup_seconds')==3 and meta.get('measurement_seconds_per_phase')==15,'Changed phase durations')
     with (folder/'frames.csv').open(encoding='utf-8-sig',newline='') as f:rows=list(csv.DictReader(f))
-    groups={i:[] for i in range(7)};previous_frame=-1;previous_phase=-1;previous_time=-1
+    groups={i:[] for i in range(7)};phase_rows={i:[] for i in range(7)};previous_frame=-1;previous_phase=-1;previous_time=-1
     for row in rows:
         phase=int(row['phase']);frame=int(row['frame']);elapsed=finite(row['phase_seconds'])
         require(phase in groups and phase>=previous_phase and frame>previous_frame,'Invalid frame/phase order')
@@ -169,6 +169,7 @@ def analyze_performance(folder,meta):
         require(int(row['allocated_bytes'])>=0 and int(row['mono_used_bytes'])>=0,'Negative memory observation')
         for k in ('camera_x','camera_y','camera_z','camera_qx','camera_qy','camera_qz','camera_qw'):finite(row[k])
         bit(row['save_in_progress'])
+        phase_rows[phase].append(row)
         if 3<=elapsed<=18:groups[phase].append(row)
     events=[json.loads(line) for line in (folder/'events.jsonl').read_text(encoding='utf-8-sig').splitlines() if line.strip()]
     summaries=[]
@@ -176,7 +177,18 @@ def analyze_performance(folder,meta):
         group=groups[phase];require(len(group)>=2,'Insufficient measured frames in phase '+str(phase))
         records=[e for e in events if e['phase']==phase]
         starts=[e for e in records if e['kind']=='phase_start'];ends=[e for e in records if e['kind']=='phase_end']
-        require(len(starts)==len(ends)==1 and ends[0]['editor_seconds']-starts[0]['editor_seconds']>=18,'Incomplete performance phase')
+        require(len(starts)==len(ends)==1,'Incomplete performance phase '+str(phase))
+        event_duration=finite(ends[0]['editor_seconds'])-finite(starts[0]['editor_seconds'])
+        require(event_duration>0,'Invalid performance event order')
+        # Completion uses the collector's phase clock, also recorded in every
+        # frame. Legacy phase_start events were written after that clock began;
+        # their timestamp difference is not the phase duration.
+        elapsed_end=finite(phase_rows[phase][-1]['phase_seconds'])
+        require(elapsed_end>=18 and ends[0]['observed_frames']==len(phase_rows[phase]),'Incomplete performance phase '+str(phase))
+        clock_start=starts[0].get('phase_clock_start_seconds')
+        if clock_start is not None:
+            require(finite(starts[0]['editor_seconds'])>=finite(clock_start) and
+                    finite(ends[0]['editor_seconds'])>=finite(clock_start)+elapsed_end,'Inconsistent performance phase clock')
         require(starts[0]['extra_features']==COUNTS[phase] and starts[0]['condition']==CONDITIONS[phase],'Incorrect phase metadata')
         require(COUNTS[phase]==0 or starts[0]['fixture_renderers']>0,'No active workload renderers')
         geometry_counts={}
@@ -211,6 +223,8 @@ def analyze_performance(folder,meta):
             require(denominator>0,'Invalid camera quaternion')
             angles.append(2*math.degrees(math.acos(min(1,abs(sum(a*b for a,b in zip(q0,q)))/denominator))))
         summaries.append({'phase':phase,'extra_features':COUNTS[phase],'condition':CONDITIONS[phase],
+                          'phase_elapsed_seconds':elapsed_end,'event_span_seconds':event_duration,
+                          'duration_evidence':'Recorded frame phase clock; start/end events and observed frame count checked',
                           'geometry_counts':geometry_counts,'extra_coordinate_entries':COUNTS[phase]*16//10,
                           'frame_ms':distribution([finite(r['frame_ms']) for r in group]),
                           'peak_allocated_bytes':max(int(r['allocated_bytes']) for r in group),

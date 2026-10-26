@@ -162,6 +162,42 @@ class AppNumericsTests(unittest.TestCase):
                 seal(folder,'editor_frame_save_scaling')
                 with self.assertRaises(ValueError):app.analyze(folder)
 
+    def test_legacy_event_delay_does_not_shorten_recorded_phase_clock(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder=Path(d);rows,events=make_performance(folder)
+            start=next(e for e in events if e['phase']==5 and e['kind']=='phase_start')
+            start['editor_seconds']+=.101
+            (folder/'events.jsonl').write_text('\n'.join(json.dumps(e) for e in events))
+            seal(folder,'editor_frame_save_scaling')
+            result=app.analyze(folder)['phases'][5]
+            self.assertLess(result['event_span_seconds'],18)
+            self.assertGreaterEqual(result['phase_elapsed_seconds'],18)
+
+    def test_phase_clock_requires_completion_frame_count_and_end_event(self):
+        for mode in ('short','count','end','clock'):
+            with tempfile.TemporaryDirectory() as d:
+                folder=Path(d);rows,events=make_performance(folder)
+                end=next(e for e in events if e['phase']==5 and e['kind']=='phase_end')
+                if mode=='short':
+                    next(r for r in reversed(rows) if r['phase']=='5')['phase_seconds']='17.999'
+                elif mode=='count':end['observed_frames']-=1
+                elif mode=='end':events.remove(end)
+                else:
+                    next(e for e in events if e['phase']==5 and e['kind']=='phase_start')['phase_clock_start_seconds']=101
+                save_rows(folder/'frames.csv',rows)
+                (folder/'events.jsonl').write_text('\n'.join(json.dumps(e) for e in events))
+                seal(folder,'editor_frame_save_scaling')
+                with self.assertRaises(ValueError):app.analyze(folder)
+
+    def test_explicit_phase_clock_is_accepted(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder=Path(d);rows,events=make_performance(folder)
+            for event in events:
+                if event['kind']=='phase_start':event['phase_clock_start_seconds']=event['editor_seconds']
+            (folder/'events.jsonl').write_text('\n'.join(json.dumps(e) for e in events))
+            seal(folder,'editor_frame_save_scaling')
+            self.assertEqual(app.analyze(folder)['result'],'COMPLETE_DESCRIPTIVE_EDITOR_CAPTURE')
+
     def test_nested_evidence_is_hashed_and_archives_never_overwrite(self):
         with tempfile.TemporaryDirectory() as d:
             folder=Path(d)/'capture';folder.mkdir();make_performance(folder)
