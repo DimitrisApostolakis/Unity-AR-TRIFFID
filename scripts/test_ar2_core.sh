@@ -59,3 +59,15 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
     "$repo_root/tests/headless/InspectorStubs.cs" \
     "$repo_root/tests/headless/InspectorRegressionTests.cs"
 "$mono_bin" "${mono_options[@]}" "$build_dir/AR2.InspectorTests.exe"
+
+# Native experiment entry points compile against Editor doubles. These checks
+# validate guards/pose bookkeeping, not native matrix or scene measurements.
+"${compiler[@]}" -langversion:latest -warnaserror -out:"$build_dir/AR2.SceneCollectorTests.exe" -r:"$json_dll" \
+    "$runtime_dir/Features/Model/GeoJsonDataModels.cs" \
+    "$runtime_dir/Features/Persistence/GeoJsonSyncState.cs" \
+    "$runtime_dir/Features/Persistence/GeoJsonAtomicFile.cs" \
+    "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SceneConsistencyCollector.cs" \
+    "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SceneConsistencySession.cs" \
+    "$repo_root/tests/experiments/SceneEditorStubs.cs" \
+    "$repo_root/tests/experiments/SceneCollectorSafetyTests.cs"
+"$mono_bin" "${mono_options[@]}" "$build_dir/AR2.SceneCollectorTests.exe"

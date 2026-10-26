@@ -392,8 +392,8 @@ these are locked, report scaling curves rather than claiming an operational pass
 
 | Area | Existing evidence | Still needed |
 | --- | --- | --- |
-| Arithmetic | Production GeoUtils; E1 native/headless collector, PROJ reference and raw-output metadata | Native Unity confirmation and final tolerance/domain lock |
-| Manipulation/height | Native synthetic surface checks and engine-double regressions | Native batch transformation measurements, full-domain samples, multilevel fixtures, drift-cycle/network counts |
+| Arithmetic | Production GeoUtils; E1 native/headless collector and Harokopio pilot, PROJ reference and raw-output metadata | Final tolerance/domain lock; additional claimed devices/sites |
+| Manipulation/height | Native synthetic surface checks, engine-double regressions and E2 scene/persistence collector | Local E2 capture, multilevel/height fixtures, actual network no-op counts and manual replay |
 | Sync | Core/outbox/coordinator regressions; guided real local HTTP outage test | Two actors, programmable fault injection, process-kill trials, scenario oracle files and timing/notification logs |
 | Polygons | Validator orientation/intersection/degeneracy/nonfinite/metadata regressions | Published fixture table and draft/UI rejection checks |
 | Accuracy | Coordinate workflow and calibration input | Independent survey checkpoints, uncertainty/datum and representation correspondences |
@@ -446,5 +446,11 @@ or substitute for locking the experiment-specific decisions above.
 
 The [numerical collector guide](NUMERICAL_EXPERIMENT.md) documents the implemented
 C# collector, independent PROJ reference, native Unity and headless entry points,
-sampling and raw output. This completes the E1 collection tool; a native Unity
-confirmation and independent geographic reference acquisition remain separate.
+sampling and raw output. A native Unity Harokopio pilot was analyzed on 26 October
+2026. [Experiment status](EXPERIMENT_STATUS.md) distinguishes that numerical
+evidence from remaining geographic validation and final design decisions.
+
+The [scene consistency guide](SCENE_CONSISTENCY_EXPERIMENT.md) documents the E2
+collector, inactive fixture in the actual map hierarchy, explicit one-cycle warmup,
+production save/reload path, per-cycle drift and outbox measurements. Real network
+uploads and a manual manipulation replay remain separate trials.
