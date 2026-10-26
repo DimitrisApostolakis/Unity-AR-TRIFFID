@@ -46,31 +46,54 @@ namespace UnityEngine
         public Vector3 localScale = new Vector3(1, 1, 1);
         public bool hasChanged;
         public Vector3 position { get { return localPosition; } set { localPosition = value; } }
+        public Quaternion rotation { get { return localRotation; } set { localRotation=value; } }
         public Matrix4x4 localToWorldMatrix;
         public void SetParent(Transform value, bool worldPositionStays) { parent = value; }
         public Vector3 TransformVector(Vector3 v) { return new Vector3(v.x * localScale.x, v.y * localScale.y, v.z * localScale.z); }
         public Vector3 InverseTransformPoint(Vector3 v) { return v; }
+        public void SetPositionAndRotation(Vector3 p,Quaternion r) { localPosition=p;localRotation=r; }
     }
     public struct Vector3
     {
         public float x, y, z;
         public Vector3(float a, float b, float c) { x = a; y = b; z = c; }
         public float magnitude { get { return (float)Math.Sqrt(x*x+y*y+z*z); } }
+        public static Vector3 one { get { return new Vector3(1,1,1); } }
+        public static Vector3 zero { get { return new Vector3(); } }
         public static Vector3 operator *(Vector3 v, float f) { return new Vector3(v.x*f,v.y*f,v.z*f); }
         public static Vector3 operator /(Vector3 v, float f) { return v*(1/f); }
         public static Vector3 operator +(Vector3 a, Vector3 b) { return new Vector3(a.x+b.x,a.y+b.y,a.z+b.z); }
     }
+    public struct Vector2 { public float x,y;public Vector2(float a,float b){x=a;y=b;} }
     public struct Quaternion
     {
         public float x,y,z,w;
+        public static Quaternion identity { get { return new Quaternion {w=1}; } }
+        public static Quaternion Euler(float x,float y,float z) { return Euler(new Vector3(x,y,z)); }
         public static Quaternion Euler(Vector3 value) { return new Quaternion { x=value.x, y=value.y, z=value.z, w=1 }; }
         public static Quaternion operator *(Quaternion a, Quaternion b) { return new Quaternion { x=a.x+b.x, y=a.y+b.y, z=a.z+b.z, w=1 }; }
     }
-    public struct Matrix4x4 { public float this[int index] { get { return 0; } } }
+    public struct Matrix4x4
+    {
+        public float this[int index] { get { return 0; } }
+        public float this[int row,int column] { get { return 0; } set { } }
+        public static Matrix4x4 identity { get { return new Matrix4x4(); } }
+        public float determinant { get { return 1; } }
+        public Matrix4x4 inverse { get { return this; } }
+        public Vector3 MultiplyVector(Vector3 v) { return v; }
+    }
     public class Material : Object { }
+    public class Renderer : Component { public bool enabled=true;public Material[] sharedMaterials=new Material[0]; }
+    public class Mesh : Object { public Vector3[] vertices;public int[] triangles;public void RecalculateNormals(){}public void RecalculateBounds(){} }
+    public class MeshCollider : Component { public Mesh sharedMesh;public bool enabled=true; }
+    public class Camera : Component { public static Camera main;public Vector3 WorldToViewportPoint(Vector3 p){return p;} }
+    public static class Time { public static int frameCount;public static float unscaledDeltaTime; }
+    public static class Screen { public static int width,height; }
+    public static class QualitySettings { public static int vSyncCount; }
+    public static class SystemInfo { public static string processorType="double",graphicsDeviceName="double";public static int systemMemorySize; }
     public class LineRenderer : Component { public Material sharedMaterial; }
     public static class Resources { public static T[] FindObjectsOfTypeAll<T>() { return new T[0]; } }
-    public static class Application { public static string unityVersion="test double", dataPath="."; }
+    public static class Application { public static string unityVersion="test double", dataPath=".";public static int targetFrameRate; }
     public sealed class Logger { public LogType filterLogType; }
     public static class Debug
     {
@@ -82,8 +105,11 @@ namespace UnityEngine
 }
 namespace UnityEditor
 {
+    public sealed class InitializeOnLoadAttribute : Attribute { }
+    public enum PlayModeStateChange { ExitingPlayMode }
+    public static class AssemblyReloadEvents { public static Action beforeAssemblyReload; }
     public sealed class MenuItem : Attribute { public MenuItem(string name) { } }
-    public static class EditorApplication { public static bool isPlaying, isPaused; }
+    public static class EditorApplication { public static bool isPlaying, isPaused;public static double timeSinceStartup;public static Action update;public static Action<PlayModeStateChange> playModeStateChanged; }
     public static class Selection { public static UnityEngine.GameObject activeGameObject; }
     public static class EditorGUIUtility { public static void PingObject(UnityEngine.Object value) { } }
     public static class EditorUtility
@@ -92,6 +118,7 @@ namespace UnityEditor
         public static void RevealInFinder(string path) { }
         public static bool DisplayCancelableProgressBar(string title,string detail,float progress) { return false; }
         public static void ClearProgressBar() { }
+        public static bool IsPersistent(UnityEngine.Object value){return false;}
     }
 }
 public class JsonSpawner : UnityEngine.MonoBehaviour
@@ -107,6 +134,7 @@ public class JsonSpawner : UnityEngine.MonoBehaviour
     public bool SyncData(PointData data, UnityEngine.Transform node) { return false; }
     public struct Vector3Double { public double lon,lat,alt; }
     public Vector3Double ColmapToWgs84(UnityEngine.Vector3 p) { return new Vector3Double(); }
+    public bool RefreshLiveHeightAboveSurface(PointData data,UnityEngine.Transform t){return false;}
 }
 public class FloatingIcon : UnityEngine.MonoBehaviour
 {
@@ -114,8 +142,22 @@ public class FloatingIcon : UnityEngine.MonoBehaviour
     public UnityEngine.Transform mainMap;
     public bool IsBeingManipulated;
 }
-public class PointData : UnityEngine.MonoBehaviour { public string pointID; }
+public class PointData : UnityEngine.MonoBehaviour
+{
+    public string pointID,heightSource,heightStatus;
+    public double longitude,latitude,altitude,heightAboveSurface;
+    public bool hasHeightAboveSurface,elevationUnresolved;
+}
 public class RuntimeLine : UnityEngine.MonoBehaviour { public bool IsDraft; public int NodeCount; }
 public class GeoJsonSyncCoordinator : UnityEngine.MonoBehaviour { }
 public class GeoJsonApiManager : UnityEngine.MonoBehaviour { }
+public static class GeoUtils
+{
+    public static UnityEngine.Vector3 GetColmapPosition(double lon,double lat,double alt,TransformConfig config){return new UnityEngine.Vector3();}
+    public static void ColmapToWgs84(UnityEngine.Vector3 v,TransformConfig config,out double lon,out double lat,out double alt){lon=lat=alt=0;}
+}
+namespace UnityEngine.Profiling
+{
+    public static class Profiler { public static long GetTotalAllocatedMemoryLong(){return 0;}public static long GetMonoUsedSizeLong(){return 0;} }
+}
 

@@ -112,8 +112,10 @@ the server gained an absent `confidence` property with value null. Code inspecti
 found that the PATCH builder serialized the typed Properties object separately,
 bypassing the feature-preserving converter. The builder now serializes the whole
 feature through that converter, retaining absent fields and foreign members.
-This corrects the diagnosed payload construction defect; a fresh native capture
-is still required. Enabling a marker collider for normal grabbing is allowed.
+The corrected native capture `Capture_20261026T195817Z_e7777ed9` subsequently
+passed independent evidence verification. Enabling a marker collider for normal
+grabbing is allowed. See [experiment status](EXPERIMENT_STATUS.md) and the
+[next in-app captures](APP_NUMERICAL_EXPERIMENTS.md).
 
 Each capture contains the private server seed/database, initial and final Unity
 and server snapshots, all HTTP requests (including GET/status/MQTT traffic),

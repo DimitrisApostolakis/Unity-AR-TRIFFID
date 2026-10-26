@@ -132,9 +132,10 @@ mapping. Curvature/calibration accuracy requires E4 even if E2 passes everywhere
 
 Freeze sync and telemetry for geometric measurements. Then run a separate
 instrumented no-op save trial with sync active to count outgoing feature writes.
-Initialize a clean acknowledged baseline; settle initial surface/provenance
-normalization before freezing the no-op baseline, and report that first-load
-behavior separately. Compare feature semantics without volatile timestamps/outbox
+Initialize a clean acknowledged baseline and record first-load behavior too.
+Loading must not persist surface/provenance changes or generate feature uploads;
+do not hide such changes by repeatedly settling/acknowledging them. Compare
+feature semantics without volatile timestamps/outbox
 bookkeeping, but log the actual payloads and real network writes as well.
 
 For every pose/cycle, measure recomputed scene-derived coordinates against both
@@ -454,3 +455,4 @@ The [scene consistency guide](SCENE_CONSISTENCY_EXPERIMENT.md) documents the E2
 collector, inactive fixture in the actual map hierarchy, explicit one-cycle warmup,
 production save/reload path, per-cycle drift and outbox measurements. Real network
 uploads and a manual manipulation replay remain separate trials.
+

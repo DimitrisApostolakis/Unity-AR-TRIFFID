@@ -74,6 +74,23 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
     "$repo_root/tests/experiments/SceneCollectorSafetyTests.cs"
 "$mono_bin" "${mono_options[@]}" "$build_dir/AR2.SceneCollectorTests.exe"
 
+# New capture menus compile against Editor doubles. Real physics/frame data
+# must still be collected inside Unity, never inferred from these guards.
+"${compiler[@]}" -langversion:latest -warnaserror -out:"$build_dir/AR2.AppNumericsTests.exe" -r:"$json_dll" \
+    "$runtime_dir/Features/Model/GeoJsonDataModels.cs" \
+    "$runtime_dir/Features/Model/GeoJsonPolygonValidator.cs" \
+    "$runtime_dir/Features/Persistence/GeoJsonSyncState.cs" \
+    "$runtime_dir/Features/Persistence/GeoJsonAtomicFile.cs" \
+    "$runtime_dir/Features/Sync/GeoJsonPayloadParser.cs" \
+    "$runtime_dir/Features/Presentation/GeoJsonVisibilityFilter.cs" \
+    "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Checks/AR2CoreRegressionTests.cs" \
+    "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SceneConsistencySession.cs" \
+    "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/AppNumericsCollector.cs" \
+    "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/AppPerformanceCollector.cs" \
+    "$repo_root/tests/experiments/SceneEditorStubs.cs" \
+    "$repo_root/tests/experiments/AppNumericsSafetyTests.cs"
+"$mono_bin" "${mono_options[@]}" "$build_dir/AR2.AppNumericsTests.exe"
+
 # Production save preparation, vertex commits and both XR event handlers.
 "${compiler[@]}" -langversion:latest -warnaserror -out:"$build_dir/AR2.PersistenceTests.exe" -r:"$json_dll" \
     "$runtime_dir/Features/Model/GeoJsonDataModels.cs" \
