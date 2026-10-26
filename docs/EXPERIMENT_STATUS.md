@@ -9,7 +9,7 @@ protocol remains a draft; final domains/tolerances and study design need locking
 | E2 map manipulation / persistence | Native 100- and 1,000-cycle captures passed normal-position and exact geographic-persistence checks; active-network no-op capture verified; failed original baseline retained | Manual XR replay; far-origin stress display errors remain a measured limitation |
 | E3 surface-relative height | Matched native batches verified: 6000.3.7f1 failed with 96 nonuniform-hierarchy failures; unchanged 6000.3.15f1 batch passed all 600 normal single-level cases, max 1.298 mm | Intended-floor and far-origin limitations remain; independent measured heights remain separate |
 | E4 geographic registration / representation | Calibration fit statistics only (not held-out accuracy) | Independent checkpoints, reference uncertainty/datum and mesh-versus-splat comparison |
-| E5 synchronization faults | Native online no-op + one-point-edit capture verified; new isolated offline-update/recovery observer ready | Collect recovery pilot, then create/delete/restart, lost-response and repeated two-client fault matrix; instrument callback latency separately |
+| E5 synchronization faults | Native online no-op/point-edit and offline-update/recovery pilots verified; offline update retained for 5.024 s, one HTTP 200 PATCH, exact final agreement and empty outbox | Create/delete/restart, lost-response and repeated two-client fault matrix; instrument callback latency separately |
 | E6 polygon validation | Native eleven-fixture table/export verified, all passed acceptance/winding/closure/metadata checks | Exercise draft/UI rejection behavior; validator checks alone are not UI evidence |
 | E7 user placement / workload / usability | No participant experiment collected; studies deferred by user | Resume participant protocol/design later |
 | E8 scale / performance | Native seven-phase Editor pilot verified after disclosed phase-clock analyzer correction; 1,000-feature forced-save p99 frame 175.122 ms, median save call 169.232 ms; no unintended writes | Repetitions and save-path profiling; standalone build/device captures, manipulation and sync-time scaling remain separate |
@@ -114,5 +114,18 @@ rather than the collector phase clock; phase 5 records 18.001500 s despite an ev
 span of 17.999265 s. Corrected analysis uses the captured phase time and verifies
 frame counts/end events. No raw measurement or duration target was changed.
 The pilot is descriptive Editor evidence, with visible save-related frame spikes
-at 1,000 additional features. The next native numerical capture is the isolated
-offline-edit/recovery pilot; participant studies remain deferred.
+at 1,000 additional features. The isolated offline-edit/recovery pilot is also verified below; participant
+studies remain deferred.
+
+## Verified native offline update/recovery pilot
+
+[Full result and measurement limits](results/SYNC_RECOVERY_20261026.md).
+Capture `Capture_20261026T231106Z_6a3d1d04` passed integrity, source, native-action,
+no-op, durable-offline, HTTP/payload, observer-role and final-state checks. All
+23 features agree across final local/server data; only the intended point changed.
+Twenty-one durable observations cover 5.023839 s before recovery. Exactly one
+feature PATCH returned HTTP 200, with an empty final outbox and no unrelated
+changes. The observed convergence interval is 0.282966 s after API health, at
+0.25 s observation resolution; the 13.25 s quiet confirmation is separate.
+This is one local outage/update pilot, not callback latency or a complete fault
+matrix. Create/delete, lost-response, app restart and two-client cases remain.
