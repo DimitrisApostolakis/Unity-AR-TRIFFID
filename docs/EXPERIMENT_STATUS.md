@@ -12,7 +12,7 @@ protocol remains a draft; final domains/tolerances and study design need locking
 | E5 synchronization faults | Native online no-op/point-edit and offline-update/recovery pilots verified; offline update retained for 5.024 s, one HTTP 200 PATCH, exact final agreement and empty outbox | Create/delete/restart, lost-response and repeated two-client fault matrix; instrument callback latency separately |
 | E6 polygon validation | Native eleven-fixture table/export verified, all passed acceptance/winding/closure/metadata checks | Exercise draft/UI rejection behavior; validator checks alone are not UI evidence |
 | E7 user placement / workload / usability | No participant experiment collected; studies deferred by user | Resume participant protocol/design later |
-| E8 scale / performance | Native seven-phase Editor pilot verified after disclosed phase-clock analyzer correction; 1,000-feature forced-save p99 frame 175.122 ms, median save call 169.232 ms; no unintended writes | Repetitions and save-path profiling; standalone build/device captures, manipulation and sync-time scaling remain separate |
+| E8 scale / performance | Three seven-phase Editor captures verified; exact fixture preservation, 126 saves, recurring save stalls; report separately because first view differs and run variation is substantial | Manual interaction checks; stronger controlled-performance claims remain outside current descriptive scope |
 
 ## Completed E1 pilot
 
@@ -152,3 +152,17 @@ separate. All 1,580 recorded file hashes passed. Play restart is now native-test
 process crashes, retry exhaustion, races and production-backend behavior remain
 outside the selected matrix. Next: two Editor performance repetitions and manual
 controller/drawing checks. SRT/COLMAP accuracy evidence is still pending.
+
+## Additional Editor captures verified (27 October 2026)
+
+[Per-run performance results and comparability limits](results/APP_PERFORMANCE_REPEATS_20261027.md).
+Both new seven-phase captures completed with all 53 source hashes matching,
+source restoration, exact fixture persistence and zero unintended outbox work.
+Three captures now provide 126 forced saves in total. Runs 2/3 share the exact
+recorded camera pose; run 1 differs by 0.201201 world units. Frame variation is
+substantial even between runs 2/3, with cause unisolated. Report per-run values,
+not a pooled identical-view estimate. Gaussian asset identity is not hashed by
+the collector. Save stalls at 1,000 features recur in all three runs.
+Editor performance collection is complete for descriptive reporting with these
+limits; no further repeat is required within that scope. The short actual
+controller/drawing check remains. Geographic accuracy awaits SRT/COLMAP inputs.
