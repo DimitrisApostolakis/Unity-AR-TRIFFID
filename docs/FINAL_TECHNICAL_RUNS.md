@@ -143,3 +143,27 @@ performance and completed synchronization results now. Fill the remaining matrix
 and manual-check results after captures are verified. Keep physical registration
 accuracy/robotic POI accuracy pending until the SRT/COLMAP and independent
 reference provenance are available; fitting residuals are not held-out accuracy.
+
+## Restart-wait correction and continuation
+
+The first native batch reported 40 successful online/offline CRUD trials, then
+stopped at `play_restart_01` with `Timed out: Play exited`. The observer waited
+for the nonexistent string `ExitedPlayMode`. Unity's actual post-Play notification
+is `EnteredEditMode`. The wait and evidence analyzer now use that notification;
+a regression test covers the actual four-state lifecycle and rejects reversed
+or incomplete events. This is a harness defect, not a demonstrated app failure.
+Native restart behavior still needs a returned capture.
+
+Preserve/package the original failed matrix, including its 40 completed trials.
+Detach Automated Matrix, stop Play if necessary, pull the fix, and extract a NEW
+prepared fixture directory. Run only the five remaining conditions:
+
+```bat
+python LocalScripts/run_sync_matrix.py --run "D:\Experiments\SyncMatrix02" --repetitions 20 --cases play_restart lost_create_response server_error conflicting_edit conflicting_delete
+```
+
+Configure its new full save-file path before Play and save the test scene.
+Attach Automated Matrix once. This collects 100 remaining trials without
+repeating the first 40. Keep both captures and disclose the harness correction;
+the first archive remains an incomplete batch, not a full matrix pass. Verify
+its individual completed trials separately before adding them to paper totals.

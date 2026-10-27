@@ -27,6 +27,15 @@ def alignment_key(config):
     transform=config['colmap_to_enu'];f32=lambda v:struct.unpack('f',struct.pack('f',v))[0]
     return (config['origin_wgs84'],f32(transform['scale']),[f32(v) for v in transform['R_rowmajor']],[f32(v) for v in transform['t']])
 
+def require_restart_lifecycle(events):
+    # Unity emits EnteredEditMode after leaving Play. There is no
+    # ExitedPlayMode member in PlayModeStateChange.
+    states=[event['state'] for event in events]
+    require('EnteredEditMode' in states and 'EnteredPlayMode' in states and
+            states.index('EnteredEditMode')<states.index('EnteredPlayMode'),
+            'Missing native Play lifecycle')
+
+
 def trial_audit(case,audit):
     writes=p.feature_writes(audit)
     if case.startswith('conflicting_'):require(not writes,'Conflicting edit was uploaded instead of server-wins')
@@ -175,7 +184,7 @@ def run(folder,repetitions=20,timeout=120,cases=CASES):
                     if case=='play_restart':
                         life_start=len(p.records(folder/'matrix_lifecycle.jsonl'))
                         stopped=command('stop_play')
-                        p.wait_until('Play exited',lambda:any(x['state']=='ExitedPlayMode' for x in p.records(folder/'matrix_lifecycle.jsonl')[life_start:]),timeout)
+                        p.wait_until('Play exited',lambda:any(x['state']=='EnteredEditMode' for x in p.records(folder/'matrix_lifecycle.jsonl')[life_start:]),timeout)
                         command('start_play')
                         p.wait_until('Play reentered',lambda:any(x['state']=='EnteredPlayMode' for x in p.records(folder/'matrix_lifecycle.jsonl')[life_start:]),timeout)
                         after=command('config')
@@ -237,8 +246,7 @@ def analyze(capture):
             for observation in obs:offline_oracle(t['case'],p.load(folder/'baseline.json'),p.load(folder/'edited.json'),observation['snapshot'],t['target'],t['created'])
             require(p.feature_map(p.load(folder/'server_offline.json'))==p.feature_map(p.load(folder/'baseline.json')),'Server changed while offline')
         if t['case']=='play_restart':
-            evidence=p.load(folder/'restart_evidence.json');states=[x['state'] for x in evidence['lifecycle']]
-            require('ExitedPlayMode' in states and 'EnteredPlayMode' in states and states.index('ExitedPlayMode')<states.index('EnteredPlayMode'),'Missing native Play lifecycle')
+            evidence=p.load(folder/'restart_evidence.json');require_restart_lifecycle(evidence['lifecycle'])
             require(p.feature_map(p.load(folder/'after_play_restart.json'))==p.feature_map(p.load(folder/'edited.json')) and len(p.existing.outbox(p.load(folder/'after_play_restart.json'))['pending'])==1,'Pending edit not restored')
     last=m['trials'][-1];last_folder=capture/(last['case']+'_%02d'%last['repetition'])
     final=p.load(capture/'unity_final.json')

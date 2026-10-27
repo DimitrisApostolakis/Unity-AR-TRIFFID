@@ -16,6 +16,13 @@ def point(fid):return {'type':'Feature','id':fid,'properties':{'id':fid,'class':
 def state(features):return {'type':'FeatureCollection','features':features,'_ar2Sync':{'schemaVersion':1,'pending':[],'remoteIds':{f['id']:f['id'] for f in features},'acknowledgedHashes':{}}}
 
 class MatrixTests(unittest.TestCase):
+    def test_restart_uses_real_unity_state_names_and_order(self):
+        events=[{'state':s} for s in ('ExitingPlayMode','EnteredEditMode','ExitingEditMode','EnteredPlayMode')]
+        m.require_restart_lifecycle(events)
+        for states in (('ExitingPlayMode',),('EnteredPlayMode','EnteredEditMode'),('ExitedPlayMode','EnteredPlayMode')):
+            with self.assertRaises(m.p.existing.TestFailure):
+                m.require_restart_lifecycle([{'state':s} for s in states])
+
     def test_offline_oracle_requires_exact_payload_baseline_and_revision(self):
         b=state([point('target'),point('other')]);b['_ar2Sync'].update(nextRevision=1,acknowledgedHashes={'target':'old'})
         e=copy.deepcopy(b);e['features'][0]['geometry']['coordinates'][2]+=1
