@@ -129,3 +129,13 @@ changes. The observed convergence interval is 0.282966 s after API health, at
 0.25 s observation resolution; the 13.25 s quiet confirmation is separate.
 This is one local outage/update pilot, not callback latency or a complete fault
 matrix. Create/delete, lost-response, app restart and two-client cases remain.
+
+## Locked remaining technical work (27 October 2026)
+
+User scope: Harokopio only, Editor performance only, SRT/COLMAP later, participant
+studies deferred. [Final technical run guide](FINAL_TECHNICAL_RUNS.md) provides a
+seven-condition automated native/real-HTTP matrix (20 repetitions), two additional
+Editor performance captures, and a finite controller/drawing checklist. The new
+matrix is READY FOR NATIVE COMPILATION/COLLECTION, not a completed result. Its
+Play restart is not a process crash; harness external writes are not a second
+full Unity client. No runtime behavior or existing prepared input was changed.
