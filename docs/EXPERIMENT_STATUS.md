@@ -139,3 +139,16 @@ Editor performance captures, and a finite controller/drawing checklist. The new
 matrix is READY FOR NATIVE COMPILATION/COLLECTION, not a completed result. Its
 Play restart is not a process crash; harness external writes are not a second
 full Unity client. No runtime behavior or existing prepared input was changed.
+
+## Completed selected synchronization matrix (27 October 2026)
+
+[Verified combined matrix results](results/SYNC_MATRIX_20261027.md): 140 completed
+native/real-HTTP trials, 20 each for online CRUD, offline CRUD, Play restart,
+lost create response, one-shot 503, external edit conflict and external deletion
+conflict. All selected trials passed exact final-data/outbox/write-count oracles.
+The first archive contains 40 verified trials then a disclosed harness lifecycle
+timeout; the corrected continuation contains the other 100. The archives remain
+separate. All 1,580 recorded file hashes passed. Play restart is now native-tested;
+process crashes, retry exhaustion, races and production-backend behavior remain
+outside the selected matrix. Next: two Editor performance repetitions and manual
+controller/drawing checks. SRT/COLMAP accuracy evidence is still pending.
