@@ -27,6 +27,16 @@ def offline():
 
 
 class ObserverTests(unittest.TestCase):
+    def test_create_recovery_reads_new_and_legacy_identity_names(self):
+        scenario=runner.scenario_from_snapshot(offline())
+        for name in ('ar_client_id','ar2_client_id'):
+            local=offline();local['_ar2Sync']['pending']=[]
+            local['_ar2Sync']['remoteIds']={'new':'server_new'}
+            remote=point('server_new');remote['properties'][name]='new'
+            self.assertEqual(runner.convergence_problems(scenario,local,{'features':[remote]}),[])
+        remote['properties']['ar_client_id']='canonical'
+        self.assertEqual(runner.client_identity(remote),'canonical')
+
     def test_offline_scenario_is_read_without_mutation(self):
         root = offline()
         before = copy.deepcopy(root)
@@ -45,7 +55,7 @@ class ObserverTests(unittest.TestCase):
         local["_ar2Sync"]["pending"] = []
         local["_ar2Sync"]["remoteIds"] = {"new": "server_new"}
         remote_point = point("server_new")
-        remote_point["properties"]["ar2_client_id"] = "new"
+        remote_point["properties"]["ar_client_id"] = "new"
         remote = {"features": [remote_point]}
         self.assertEqual(runner.convergence_problems(scenario, local, remote), [])
         remote["features"].append(copy.deepcopy(remote_point))
@@ -122,3 +132,4 @@ class ObserverTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

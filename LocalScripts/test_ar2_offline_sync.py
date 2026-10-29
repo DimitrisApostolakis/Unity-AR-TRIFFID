@@ -70,9 +70,15 @@ def scenario_from_snapshot(root, delete_id=None, existing_ids=()):
     return {"creates": sorted(creates), "deletes": deletes}
 
 
+def client_identity(feature):
+    props = feature.get("properties") or {}
+    return props.get("ar_client_id", props.get("ar2_client_id", ""))
+
+
 def comparable(feature):
     props = copy.deepcopy(feature.get("properties") or {})
     props.pop("id", None)
+    props.pop("ar_client_id", None)
     props.pop("ar2_client_id", None)
     return {"type": feature.get("type", "Feature"), "geometry": feature.get("geometry"), "properties": props}
 
@@ -94,7 +100,7 @@ def convergence_problems(scenario, local, remote):
             problems.append(f"Create {fid}: {edit.get('status')} {edit.get('error') or ''}".strip())
         binding = state["remoteIds"].get(fid)
         matches = [f for f in remote["features"] if
-                   str((f.get("properties") or {}).get("ar2_client_id", "")) == fid or str(f.get("id")) == fid]
+                   str(client_identity(f)) == fid or str(f.get("id")) == fid]
         if len(matches) != 1:
             problems.append(f"Create {fid} has {len(matches)} server records; expected exactly one.")
         if fid not in local_features or not binding or str(binding) not in remote_features:
@@ -331,3 +337,4 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

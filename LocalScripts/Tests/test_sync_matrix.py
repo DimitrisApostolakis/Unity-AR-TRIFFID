@@ -45,7 +45,7 @@ class MatrixTests(unittest.TestCase):
     def test_creation_accepts_only_identity_aliases_and_one_record(self):
         b=state([point('target'),point('other')]);e=copy.deepcopy(b);e['features'].append(point('new'))
         l=copy.deepcopy(e);l['features']=[f for f in l['features'] if f['id']!='target'];l['_ar2Sync']['remoteIds']={'other':'other','new':'server_new'}
-        r=copy.deepcopy(l);r['features'][-1]['id']='server_new';r['features'][-1]['properties']['id']='server_new';r['features'][-1]['properties']['ar2_client_id']='new'
+        r=copy.deepcopy(l);r['features'][-1]['id']='server_new';r['features'][-1]['properties']['id']='server_new';r['features'][-1]['properties']['ar_client_id']='new'
         self.assertTrue(m.final_oracle('offline_create_delete',b,e,l,r,'target','new'))
         r['features'].append(copy.deepcopy(r['features'][-1]))
         with self.assertRaises(m.p.existing.TestFailure):m.final_oracle('offline_create_delete',b,e,l,r,'target','new')

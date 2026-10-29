@@ -79,7 +79,7 @@ def final_oracle(case,baseline,edited,local,remote,target,created):
         if deleting:require(target not in l and target not in r and target not in state['remoteIds'],'Deletion not acknowledged')
         require(len(l)==len(old)+(0 if deleting else 1) and len(r)==len(l),'Missing or duplicate created feature')
         remote_id=state['remoteIds'].get(created)
-        matches=[f for f in remote['features'] if str((f.get('properties') or {}).get('ar2_client_id',''))==created or str(f['id'])==str(remote_id)]
+        matches=[f for f in remote['features'] if str(p.existing.client_identity(f))==created or str(f['id'])==str(remote_id)]
         require(len(matches)==1 and remote_id,'Created feature has no unique binding')
         incoming=p.feature_map(edited)[created]
         local_new=l.get(created) or l.get(str(remote_id))

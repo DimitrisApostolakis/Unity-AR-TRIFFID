@@ -363,7 +363,7 @@ Id**, and use its component context menu:
 ## Server contract and measurement limits
 
 The client sends a stable `Idempotency-Key` for each operation and an
-`ar2_client_id` for client-created features. Verify whether the server honours
+`ar_client_id` for client-created features. Verify whether the server honours
 the key and preserves/returns the client ID. An uncertain create is compared
 with the server before being resent. If its outcome cannot be established,
 it stays visible as needing confirmation. Explicitly keeping the local
@@ -389,3 +389,14 @@ state, search, dedicated path exclusions and read-only diagnostics. They do not
 replace a native Unity import and visual Inspector check. See
 [code organization](CODE_STRUCTURE.md) for the new source layout.
 
+
+### Client identity property naming
+
+Newly created features serialize the creation-recovery identity as
+`properties.ar_client_id`. This is a naming change only: server IDs, local/server
+bindings and recovery semantics are unchanged. Legacy `ar2_client_id` values are
+still read, with the canonical name taking precedence if both are present.
+Unchanged imported legacy features retain their original representation; this
+change does not bulk-rewrite existing server data. Both identity names are
+excluded from content fingerprints. Previously collected experiment archives
+remain unchanged; their source manifests refer to the pre-rename code.

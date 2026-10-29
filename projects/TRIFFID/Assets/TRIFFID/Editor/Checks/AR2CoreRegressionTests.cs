@@ -345,6 +345,22 @@ public static class AR2CoreRegressionTests
             Equal(parsed.features[0].properties.height_above_surface_m.Value,-2);
             Check(parsed.features[0].properties.heightSource=="mesh" && parsed.features[0].properties.clientFeatureId=="feature_original");
         });
+        Test("New client identity uses ar_client_id while legacy records remain readable", () =>
+        {
+            Feature fresh=Point("local",1); fresh.properties.clientFeatureId="local";
+            JObject output=JObject.FromObject(fresh);
+            Check((string)output["properties"]["ar_client_id"]=="local");
+            Check(output["properties"]["ar2_client_id"]==null);
+            JObject legacy=(JObject)output.DeepClone();
+            ((JObject)legacy["properties"]).Remove("ar_client_id");
+            legacy["properties"]["ar2_client_id"]="local";
+            Feature parsed=legacy.ToObject<Feature>();
+            Check(parsed.properties.clientFeatureId=="local");
+            Check(JToken.DeepEquals(legacy,JObject.FromObject(parsed)));
+            Check(GeoJsonOutbox.Fingerprint(fresh)==GeoJsonOutbox.Fingerprint(parsed));
+            JObject both=(JObject)legacy.DeepClone(); both["properties"]["ar_client_id"]="preferred";
+            Check(both.ToObject<Feature>().properties.clientFeatureId=="preferred");
+        });
         Test("API parser removes nonfinite optional altitude instead of accepting a height", () =>
         {
             JObject obj=JObject.FromObject(Collection(Point("a",1))); obj["features"][0]["properties"]["altitude_m"]="NaN";
@@ -449,3 +465,4 @@ public static class AR2CoreRegressionTests
     private static void Equal(double actual,double expected) { if(Math.Abs(actual-expected)>1e-8) throw new Exception("Expected "+expected+", got "+actual); }
     private static void Test(string name,Action action) { try { action(); passed++; Console.WriteLine("PASS "+name); } catch(Exception ex) { failed++; Console.WriteLine("FAIL "+name+": "+ex); } }
 }
+

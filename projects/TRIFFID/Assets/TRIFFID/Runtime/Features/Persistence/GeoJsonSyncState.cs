@@ -67,7 +67,7 @@ public static class GeoJsonOutbox
         JObject value = JObject.FromObject(feature);
         value.Remove("id");
         JObject properties = value["properties"] as JObject;
-        if (properties != null) { properties.Remove("id"); properties.Remove("ar2_client_id"); }
+        if (properties != null) { properties.Remove("id"); properties.Remove("ar_client_id"); properties.Remove("ar2_client_id"); }
         using (SHA256 hash = SHA256.Create())
             return BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(value.ToString(Formatting.None)))).Replace("-", "");
     }

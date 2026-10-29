@@ -25,7 +25,7 @@ public class Properties
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)] public JToken heightSources;
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)] public JToken heightStatuses;
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)] public string elevationStatus;
-    [JsonProperty("ar2_client_id", NullValueHandling = NullValueHandling.Ignore)] public string clientFeatureId;
+    [JsonProperty("ar_client_id", NullValueHandling = NullValueHandling.Ignore)] public string clientFeatureId;
 
     [JsonProperty("marker-color", NullValueHandling = NullValueHandling.Ignore)]
     public string marker_color;
@@ -86,6 +86,10 @@ public sealed class GeoJsonFeatureConverter : JsonConverter
         Feature feature = new Feature();
         JObject display = (JObject)source.DeepClone();
         JObject properties = display["properties"] as JObject;
+        // Read previously saved identities without rewriting original features.
+        // New features serialize only the neutral ar_client_id name.
+        if (properties != null && properties["ar_client_id"] == null && properties["ar2_client_id"] != null)
+            properties["ar_client_id"] = properties["ar2_client_id"].DeepClone();
         if (properties != null)
             foreach (string name in new[] { "confidence", "altitude_m", "height_above_surface_m", "fill-opacity" })
             {
