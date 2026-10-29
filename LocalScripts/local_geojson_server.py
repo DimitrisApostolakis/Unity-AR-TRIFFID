@@ -11,7 +11,7 @@ Endpoints:
 
 Test mode:
 - Use --rewrite-create-ids to simulate a backend that assigns a different
-  final server ID during feature creation.
+  final server ID during feature creation and keeps that ID immutable on PATCH.
 """
 
 from __future__ import annotations
@@ -192,6 +192,7 @@ class GeoJsonStore:
                 return None
 
             target = features[idx]
+            assigned_id = target.get("id")
             if "geometry" in patch and isinstance(patch["geometry"], dict):
                 target["geometry"] = patch["geometry"]
 
@@ -199,12 +200,19 @@ class GeoJsonStore:
                 existing_props = target.get("properties")
                 if not isinstance(existing_props, dict):
                     existing_props = {}
-                existing_props.update(patch["properties"])
+                incoming_props = dict(patch["properties"])
+                if self.rewrite_create_ids:
+                    # In server-assigned mode, a client cannot rename a record
+                    # by putting a local ID in the update's properties.
+                    incoming_props.pop("id", None)
+                existing_props.update(incoming_props)
                 if not str(existing_props.get("id") or "").strip():
                     existing_props["id"] = str(target.get("id") or feature_id)
                 target["properties"] = existing_props
 
-            if "id" in patch and str(patch["id"] or "").strip():
+            if self.rewrite_create_ids:
+                target["id"] = assigned_id
+            elif "id" in patch and str(patch["id"] or "").strip():
                 target["id"] = str(patch["id"])
 
             features[idx] = target
@@ -722,7 +730,7 @@ def main() -> int:
     parser.add_argument(
         "--rewrite-create-ids",
         action="store_true",
-        help="Test mode: assign a new server-side ID for every PUT create"
+        help="Test mode: assign a new server-side ID for every PUT create; keep IDs immutable on PATCH"
     )
     args = parser.parse_args()
 
@@ -775,3 +783,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

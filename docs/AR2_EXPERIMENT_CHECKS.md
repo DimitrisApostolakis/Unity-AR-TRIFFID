@@ -425,3 +425,40 @@ Validation for this display change: 16 Python observer/matrix tests passed.
 Native serializer/payload and panel-refresh regression checks were added; a C#
 compiler/Unity runner was unavailable in the editing environment, so native
 compilation and the visual ID transition still require verification in Unity.
+
+### Interactive local check with server-assigned IDs
+
+Stop other local test runners and stop Play before this check. This emulates the
+known official-server identity policy, not its unprovided ID algorithm or full
+API contract. The private server generates `server_<UUID>` on every PUT creation,
+returns the ID in `id` and `feature.id`, keeps it stable on PATCH even if the
+payload contains a local ID, preserves/returns `ar_client_id`, and deletes by
+server ID. Seventeen Python observer/matrix tests pass, including a real HTTP
+create, fetch, update with the old local ID, server restart and delete check.
+
+From the repository root, create a fresh private output directory and run:
+
+```bat
+mkdir "C:\Users\apost\Desktop\Paper\ServerIdCheck"
+python LocalScripts/local_geojson_server.py --port 8080 --db "C:\Users\apost\Desktop\Paper\ServerIdCheck\server_db.json" --rewrite-create-ids --audit-log "C:\Users\apost\Desktop\Paper\ServerIdCheck\requests.jsonl"
+```
+
+Before Play: set JsonSpawner Save File Path to
+`C:\Users\apost\Desktop\Paper\ServerIdCheck\unity_state.json`, enable API Use
+Localhost and the coordinator/remote polling, and retain the normal GeoJSON and
+alignment. This server starts with an empty feature collection; source files and
+previous experiment archives must not be used as its database or save target.
+
+Start Play unpaused. Through the normal UI, create one fire point. Its panel ID
+should initially be `-` and then show the generated `server_...` value after
+acknowledgement. Compare it with `features[0].id` in `server_db.json`; the
+`ar_client_id` property contains the separate local `feature_...` key. Move and
+release the point, wait for synchronization, and confirm that its server ID is
+unchanged and that the database still contains exactly one feature. Delete it
+through the UI and confirm the collection becomes empty. The audit should show
+PUT to the collection and PATCH/DELETE to the returned server ID.
+
+Keep the private snapshot/audit and a screenshot if checking the new panel
+behavior. Stop Play and the server with Ctrl+C afterwards and restore the original
+Inspector/API settings. Actual Unity UI behavior requires this native check;
+HTTP-only tests do not establish the displayed panel result.

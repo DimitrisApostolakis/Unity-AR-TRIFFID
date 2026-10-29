@@ -27,6 +27,31 @@ def offline():
 
 
 class ObserverTests(unittest.TestCase):
+    def test_server_assigned_identity_survives_updates_and_is_used_for_deletion(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory=Path(d);db=directory/'db.json'
+            runner.write_json(db,{'type':'FeatureCollection','features':[]})
+            with socket.socket() as probe:probe.bind(('127.0.0.1',0));port=probe.getsockname()[1]
+            server=runner.LocalServer(db,directory,port,rewrite_ids=True)
+            try:
+                server.start();incoming=point('feature_local');incoming['properties']['ar_client_id']='feature_local'
+                created=server.request(runner.FEATURES,'PUT',incoming);sid=created['id']
+                self.assertNotEqual(sid,'feature_local');self.assertEqual(created['feature']['id'],sid)
+                self.assertEqual(created['feature']['properties']['id'],sid)
+                self.assertEqual(created['feature']['properties']['ar_client_id'],'feature_local')
+                changed=copy.deepcopy(incoming);changed['geometry']['coordinates'][2]+=1
+                result=server.request(runner.FEATURES+'/'+sid,'PATCH',changed)
+                self.assertEqual(result['id'],sid);self.assertEqual(result['feature']['properties']['id'],sid)
+                fetched=server.request(runner.FEATURES)['features']
+                self.assertEqual(len(fetched),1);self.assertEqual(fetched[0]['id'],sid)
+                self.assertEqual(fetched[0]['geometry'],changed['geometry'])
+                self.assertEqual(fetched[0]['properties']['ar_client_id'],'feature_local')
+                server.stop();server.start()
+                self.assertEqual(server.request(runner.FEATURES)['features'][0]['id'],sid)
+                server.request(runner.FEATURES+'/'+sid,'DELETE')
+                self.assertEqual(server.request(runner.FEATURES)['features'],[])
+            finally:server.stop()
+
     def test_create_recovery_reads_new_and_legacy_identity_names(self):
         scenario=runner.scenario_from_snapshot(offline())
         for name in ('ar_client_id','ar2_client_id'):
