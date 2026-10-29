@@ -519,7 +519,7 @@ public class PointInfoPanel : MonoBehaviour
         Debug.Log($"[Panel] RefreshPanel -> {p.pointClass} / {p.pointID} (index {currentIndex}/{markerOrder.Count})");
 
         if (classText         != null) classText.text         = GetDisplayClassName(p);
-        if (idValueText       != null) idValueText.text       = p.pointID;
+        if (idValueText       != null) idValueText.text       = GetDisplayId(p);
         if (altitudeValueText != null)
         {
             altitudeValueText.text = p.elevationUnresolved ? "-" :
@@ -789,7 +789,7 @@ public class PointInfoPanel : MonoBehaviour
         string titleText = isUgv ? "BEHAVIOR" : "id";
         string valueText = isUgv
             ? (string.IsNullOrWhiteSpace(marker.behavior) ? ProtectedLatestMqttBehaviorFallback : marker.behavior)
-            : marker.pointID;
+            : GetDisplayId(marker);
 
         if (ugvBehaviorTitleText != null)
             ugvBehaviorTitleText.text = titleText;
@@ -805,6 +805,13 @@ public class PointInfoPanel : MonoBehaviour
 
         if (ugvBehaviorValueText != null)
             ugvBehaviorValueText.text = "-";
+    }
+
+    private string GetDisplayId(PointData marker)
+    {
+        if (marker == null) return "-";
+        if (IsProtectedLatestMqttMarker(marker)) return marker.pointID;
+        return string.IsNullOrWhiteSpace(marker.serverFeatureId) ? "-" : marker.serverFeatureId;
     }
 
     private bool IsProtectedLatestMqttMarker(PointData marker)
@@ -914,4 +921,5 @@ public class PointInfoPanel : MonoBehaviour
         LiveUpdateIfCurrent(observedMarker);
     }
 }
+
 

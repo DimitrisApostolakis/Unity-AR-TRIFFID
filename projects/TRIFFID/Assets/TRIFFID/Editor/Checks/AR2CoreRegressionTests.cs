@@ -51,6 +51,18 @@ public static class AR2CoreRegressionTests
             Check(GeoJsonOutbox.NetworkPayload(root, next).id == "server_42");
             Equal(X(next.payload), 3d);
         });
+        Test("server assigned IDs are used on update without mutating local identity", () =>
+        {
+            Root root=Empty();root.features.Add(Point("feature_local",1));
+            GeoJsonOutbox.CaptureChanges(root,Now);GeoJsonPendingEdit created=Dispatch(root);
+            GeoJsonOutbox.Acknowledge(root,created,"server_482");
+            Change(root,"feature_local",2);GeoJsonPendingEdit update=GeoJsonOutbox.Next(root,Now);
+            Feature payload=GeoJsonOutbox.NetworkPayload(root,update);
+            JObject patch=GeoJsonPayloadParser.BuildUpdatePayload(payload,"server_482");
+            Check((string)patch["id"]=="server_482" && (string)patch["properties"]["id"]=="server_482");
+            Check(root.features[0].id=="feature_local" && update.payload.id=="feature_local");
+            Check(root.syncState.remoteIds["feature_local"]=="server_482");
+        });
         Test("deletion during an in-flight create is retained after its acknowledgement", () =>
         {
             Root root = Empty(); root.features.Add(Point("feature_a", 1)); GeoJsonOutbox.CaptureChanges(root, Now);

@@ -180,6 +180,9 @@ public partial class JsonSpawner : MonoBehaviour
             if (mapping.node == null) continue;
             PointData data = mapping.node.GetComponent<PointData>();
             if (data == null) continue;
+            string serverId;
+            data.serverFeatureId = currentRootData.syncState.remoteIds.TryGetValue(data.pointID, out serverId)
+                ? serverId : null;
             GeoJsonPendingEdit edit = GeoJsonOutbox.Find(currentRootData, data.pointID);
             data.syncStatus = edit == null ? string.Empty :
                 edit.status == "conflict" ? "Conflict" : edit.status == "reconcile" ? "Needs confirmation" :

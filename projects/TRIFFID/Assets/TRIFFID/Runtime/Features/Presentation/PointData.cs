@@ -9,6 +9,8 @@ public class PointData : MonoBehaviour
 {
     public string pointClass = "-";
     public string pointID    = "-";
+    // Runtime presentation only. pointID remains the stable local edit key.
+    [NonSerialized] public string serverFeatureId;
     public string category   = "-";
     public string source     = "-";
     public string behavior   = "-";
@@ -85,4 +87,5 @@ public class PointData : MonoBehaviour
         OnDataChanged?.Invoke();
     }
 }
+
 

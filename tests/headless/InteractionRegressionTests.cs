@@ -8,6 +8,19 @@ public static class InteractionRegressionTests
     private static int passed,failed;
     public static int Main()
     {
+        Test("panel shows confirmed server ID and refreshes after acknowledgement",()=>
+        {
+            using(var fixture=new PanelFixture())
+            {
+                var idText=new GameObject().AddComponent<TextMeshProUGUI>();
+                Set(fixture.panel,"idValueText",idText);
+                var marker=fixture.Register("feature_local");
+                Check(idText.text=="-");
+                marker.serverFeatureId="server_482";marker.NotifyDataChanged();
+                Check(idText.text=="server_482" && marker.pointID=="feature_local");
+                marker.serverFeatureId=null;marker.NotifyDataChanged();Check(idText.text=="-");
+            }
+        });
         Test("disabled surface is enabled only during a successful query",()=>
         {
             Collider c=Surface(false); c.query=(ray,d)=>new RaycastHit { point=new Vector3(1,2,3) };
@@ -192,3 +205,4 @@ public static class InteractionRegressionTests
         catch(Exception ex) { failed++; Console.WriteLine("FAIL "+name+": "+ex); }
     }
 }
+

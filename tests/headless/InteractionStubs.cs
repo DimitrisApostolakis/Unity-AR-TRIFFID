@@ -133,7 +133,7 @@ namespace UnityEngine.UI
 }
 public class PointData:UnityEngine.MonoBehaviour
 {
-    public string pointID,pointClass,source,syncStatus,behavior,category,lineColorHex;
+    public string pointID,pointClass,source,syncStatus,behavior,category,lineColorHex,serverFeatureId;
     public bool elevationUnresolved,hasHeightAboveSurface;
     public string heightSource;
     public double heightAboveSurface,latitude,longitude;
@@ -144,3 +144,4 @@ public class PointData:UnityEngine.MonoBehaviour
 public class PulseEffect:UnityEngine.MonoBehaviour { public void StopPulse() { } public void StartPulse() { } }
 public class DeleteConfirmButton:UnityEngine.MonoBehaviour { public TMPro.TextMeshProUGUI buttonText; public void SetTargetNode(UnityEngine.Transform node) { } }
 public interface IAnnotationPersistenceService { bool DeleteFeatureByNode(UnityEngine.Transform node,bool requireDrawMode=false); }
+

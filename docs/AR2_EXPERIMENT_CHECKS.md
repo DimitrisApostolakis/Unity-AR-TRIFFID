@@ -400,3 +400,28 @@ Unchanged imported legacy features retain their original representation; this
 change does not bulk-rewrite existing server data. Both identity names are
 excluded from content fingerprints. Previously collected experiment archives
 remain unchanged; their source manifests refer to the pre-rename code.
+
+### Displayed feature identity
+
+The POI information panel displays the confirmed server ID from the local/server
+binding, never the local editing key or `ar_client_id`. A new unsynchronized
+feature displays `-` until a server ID is acknowledged or reconciled. Binding
+commits refresh marker data and the open panel. The marker's internal pointID
+remains stable for editing, selection and deletion. Latest-MQTT behavior display
+is unchanged. The displayed server ID is runtime presentation data, not a new
+GeoJSON property.
+
+Creation starts with a local `feature_...` identifier. The server may assign its
+own ID, returned as `id` or `feature.id` in the create response. Later requests
+use that returned ID in the item URL and outgoing payload. Lost-response
+reconciliation needs the server to retain and return `ar_client_id` (including
+legacy read compatibility). Missing correlation must not be treated as permission
+to blindly repeat a create. IDs must remain stable for updates/deletions; a
+backend that assigns another new ID on every update requires separate handling.
+The verified local matrix exercised server-assigned creation IDs, not an
+uninspected production API's response schema or property filtering.
+
+Validation for this display change: 16 Python observer/matrix tests passed.
+Native serializer/payload and panel-refresh regression checks were added; a C#
+compiler/Unity runner was unavailable in the editing environment, so native
+compilation and the visual ID transition still require verification in Unity.
