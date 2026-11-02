@@ -1,4 +1,5 @@
 using UnityEditor;
+using UnityEngine;
 
 [CustomEditor(typeof(JsonSpawner)), CanEditMultipleObjects]
 public sealed class JsonSpawnerEditor : TriffidGroupedEditor
@@ -21,11 +22,36 @@ public sealed class GeoJsonApiManagerEditor : TriffidGroupedEditor
 [CustomEditor(typeof(MapColliderSync)), CanEditMultipleObjects]
 public sealed class MapColliderSyncEditor : TriffidGroupedEditor
 {
-    protected override string Description => "Aligns the collision object with the map and splat renderer. The COLMAP aligner can call this after applying the renderer rotation.";
+    protected override string Description => "The Gaussian renderer owns position, rotation and signed scale. Match places the dedicated mesh below it. Use OriginalPly for converter output; AlreadyMirroredX only compensates a known import conversion.";
     protected override void DrawActions()
     {
         if (targets.Length == 1)
-            ArPipelineInspectorGui.DrawActionButtons("Sync collider to map", ((MapColliderSync)target).SyncToMap);
+            ArPipelineInspectorGui.DrawActionButtons("Match Gaussian Renderer", MatchWithUndo);
+    }
+
+    private void MatchWithUndo()
+    {
+        var sync = (MapColliderSync)target;
+        if (!sync.enabled)
+        {
+            Debug.LogWarning("[MapColliderSync] Enable the component before matching.", sync);
+            return;
+        }
+        if (!sync.TryValidateSetup(out string error))
+        {
+            Debug.LogWarning("[MapColliderSync] " + error, sync);
+            return;
+        }
+        Transform mesh = sync.MeshColliderObject;
+        if (EditorUtility.IsPersistent(mesh) || EditorUtility.IsPersistent(sync.GaussianRenderer))
+        {
+            Debug.LogWarning("[MapColliderSync] Match scene objects or objects opened in Prefab Mode, not prefab assets.", sync);
+            return;
+        }
+        Undo.SetTransformParent(mesh, sync.GaussianRenderer, "Match Gaussian Renderer");
+        Undo.RecordObject(mesh, "Match Gaussian Renderer");
+        sync.SyncToMap();
+        PrefabUtility.RecordPrefabInstancePropertyModifications(mesh);
     }
 }
 

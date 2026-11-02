@@ -56,10 +56,51 @@ copies:
 
 1. `ColmapGaussianRotationAligner` reads the transform and applies rotation to
    the splat renderer. It preserves position and scale.
-2. It can call `MapColliderSync`, which aligns the collision object using the
-   existing map/renderer references, rotation offset and copy options.
+2. `MapColliderSync` binds the dedicated mesh directly below that same renderer.
+   The renderer owns the complete display transform, including negative scale.
+   There are no independent position/scale copy sources or Euler corrections.
+   `OriginalPly` keeps mesh local position/rotation at zero and scale at one.
+   `AlreadyMirroredX` applies a local X reflection only to undo a known import
+   conversion. Following maintains the binding without rebuilding mesh geometry.
+   One post-rotation sync is sufficient: parent changes are inherited immediately.
 3. `MeshPathJsonLoader` loads and caches the collision mesh. It does not replace
    either alignment role.
+
+### Updating an existing scene
+
+Keep the Gaussian renderer's required local scale (for example `(-1, 1, 1)`).
+On the existing `MapColliderSync`, assign that renderer and a **separate mesh
+object**, choose `OriginalPly` for the Python converter's unchanged XYZ output,
+then click **Match Gaussian Renderer**. The Inspector action records hierarchy
+and transform Undo. Source/target object references keep their serialized field
+names and the component GUID is unchanged. The hidden `MapTransform` reference
+is retained for compatibility but no longer controls alignment. Old Euler
+offsets and position/scale copy flags are deliberately superseded.
+
+The mesh must not be the renderer or an ancestor of it. The follower rejects
+these setups without changing the hierarchy. If the mesh importer baked an X
+reflection into vertex coordinates, choose `AlreadyMirroredX`; do not also
+negate mesh scale by hand. Import conversion cannot be inferred reliably from
+symmetrical bounds. Geographic consumers must use the same **raw COLMAP frame**
+as the renderer (or an identity child), not the child used to compensate an
+importer's axis conversion. GeoJSON remains `[longitude, latitude, altitude]`.
+
+Application scenes are not tracked in this branch, so private local scenes are
+not rewritten. Existing assigned components bind at runtime; the Match button
+applies the same arrangement in Edit Mode. Disable the component to stop both
+automatic and aligner-triggered re-binding. An already-parented mesh continues
+to inherit its parent; disabling the component does not freeze or detach it.
+Keep map move/scale/reset controls on the common Map Root above the renderer,
+not on its collider child. For imported meshes, Read/Write must be enabled when
+required by collider cooking (including shear, or a convex collider under
+negative scale); runtime-created OBJ meshes are initially readable.
+
+Run **Tools > Experiments > Check Renderer Collider Alignment** for native
+Unity checks of signed/nonuniform ancestor transforms, repeated matching,
+map manipulation, raw-versus-imported axes, cycle guards, disabled followers,
+and a real raycast against a reflected readable MeshCollider. Fixtures are
+temporary; existing project objects are not edited. These native checks must
+be run in Unity and are not represented by the Python regression suite.
 
 The mesh loader and COLMAP aligner already share
 `package/Runtime/ProjectPathResolver.cs`. That resolver also serves the Gaussian

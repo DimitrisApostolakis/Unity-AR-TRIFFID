@@ -18,6 +18,7 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
     [Header("References")]
     public Transform gaussianRenderer;
 
+    [Tooltip("Optional collider follower. Its Gaussian Renderer reference must be this same renderer.")]
     public MapColliderSync mapColliderSync;
 
     [Header("Transform Path Loading")]
@@ -33,7 +34,6 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
     public bool applyAfterOneFrame = true;
     public bool rememberInitialRotation = true;
     public bool syncColliderAfterApply = true;
-    public bool syncColliderAgainAfterOneFrame = true;
 
     [Header("Coordinate Mapping")]
     [Tooltip("Default: Unity = (East, Up, North).")]
@@ -122,12 +122,6 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
         ApplyJsonRotationAndSyncCollider();
     }
 
-    private IEnumerator SyncColliderAgainAfterOneFrameCoroutine()
-    {
-        yield return null;
-        SyncColliderNow();
-    }
-
     [ContextMenu("Validate Transform JSON")]
     public void ValidateTransformJson()
     {
@@ -186,6 +180,11 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
             return;
         }
 
+        if (mapColliderSync.GaussianRenderer != gaussianRenderer)
+        {
+            Debug.LogWarning("[ColmapGaussianRotationAligner] Collider follower must reference the same Gaussian Renderer. Sync skipped.", this);
+            return;
+        }
         mapColliderSync.SyncToMap();
     }
 
@@ -256,11 +255,6 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
         if (shouldSyncCollider)
         {
             SyncColliderNow();
-
-            if (syncColliderAgainAfterOneFrame && Application.isPlaying)
-            {
-                StartCoroutine(SyncColliderAgainAfterOneFrameCoroutine());
-            }
         }
     }
 

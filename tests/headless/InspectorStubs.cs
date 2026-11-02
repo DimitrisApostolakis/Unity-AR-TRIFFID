@@ -4,6 +4,8 @@ using System.Collections.Generic;
 namespace UnityEngine
 {
     public class Object { }
+    public class Transform : Object { }
+    public static class Debug { public static void LogWarning(string text, Object context) { } }
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class HeaderAttribute : Attribute { public readonly string header; public HeaderAttribute(string text) { header=text; } }
     public class GUIContent { public GUIContent(string text) { } }
@@ -79,11 +81,24 @@ namespace UnityEditor
     }
     public sealed class CustomEditor : Attribute { public CustomEditor(Type type) { } }
     public sealed class CanEditMultipleObjects : Attribute { }
+    public static class EditorUtility { public static bool IsPersistent(UnityEngine.Object target) { return false; } }
+    public static class Undo
+    {
+        public static void SetTransformParent(UnityEngine.Transform target, UnityEngine.Transform parent, string label) { }
+        public static void RecordObject(UnityEngine.Object target, string label) { }
+    }
+    public static class PrefabUtility { public static void RecordPrefabInstancePropertyModifications(UnityEngine.Object target) { } }
 }
 public class JsonSpawner : UnityEngine.Object { }
 public class GeoJsonSyncCoordinator : UnityEngine.Object { }
 public class GeoJsonApiManager : UnityEngine.Object { }
-public class MapColliderSync : UnityEngine.Object { public void SyncToMap() { } }
+public class MapColliderSync : UnityEngine.Object
+{
+    public bool enabled=true;
+    public UnityEngine.Transform GaussianRenderer, MeshColliderObject;
+    public bool TryValidateSetup(out string error) { error=null;return true; }
+    public void SyncToMap() { }
+}
 public class MeshPathJsonLoader : UnityEngine.Object { public void ValidatePaths() { } public void LoadAndApplyMesh() { } }
 public class ColmapGaussianRotationAligner : UnityEngine.Object { public void ValidateTransformJson() { } public void ApplyJsonRotationAndSyncCollider() { } }
 public class XRControllerLogger : UnityEngine.Object { }

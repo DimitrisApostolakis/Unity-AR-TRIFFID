@@ -1,104 +1,90 @@
 using UnityEngine;
 
+/// <summary>
+/// Keeps mesh vertices in the renderer's coordinate frame. Parenting preserves
+/// reflections and scaled/rotated ancestors without decomposing world matrices.
+/// </summary>
 public class MapColliderSync : MonoBehaviour
 {
-    [Header("References")]
-    public Transform MapTransform;
+    public enum MeshVertexAxes
+    {
+        OriginalPly = 0,
+        AlreadyMirroredX = 1
+    }
 
+    [Header("Renderer and Collider")]
+    [Tooltip("Source of the complete display transform. Keep its required scale, including (-1, 1, 1).")]
     public Transform GaussianRenderer;
 
+    [Tooltip("Dedicated mesh object to place directly below Gaussian Renderer. It must not contain the renderer.")]
     public Transform MeshColliderObject;
 
-    [Header("Alignment")]
-    [SerializeField] private Vector3 rotationOffsetEuler = new Vector3(123f, 0f, 0f);
+    [Header("Mesh Coordinates")]
+    [Tooltip("OriginalPly: unchanged XYZ, as exported by the converter. AlreadyMirroredX: mesh vertices already contain (-x, y, z); undo that import conversion locally.")]
+    public MeshVertexAxes meshVertexAxes = MeshVertexAxes.OriginalPly;
 
-    [SerializeField] private bool copyPositionFromMapRoot = true;
+    [Header("Binding")]
+    [Tooltip("Bind on Start and repair the binding in LateUpdate. Once parented, transforms are inherited even when this option is off. The mesh is never rebuilt or reloaded.")]
+    public bool maintainBinding = true;
 
-    [SerializeField] private bool copyScaleFromMapRoot = true;
+    // Keep the existing public/serialized reference for compatibility. It no
+    // longer supplies position or scale; GaussianRenderer is the only source.
+    [HideInInspector] public Transform MapTransform;
 
-    [SerializeField] private bool useGaussianWorldRotation = true;
+    private string lastWarning;
 
-    private bool missingMapWarningLogged;
-    private bool missingGaussianWarningLogged;
-    private bool missingColliderWarningLogged;
+    private void Start()
+    {
+        if (maintainBinding) SyncToMap();
+    }
 
-    [ContextMenu("Sync To Map")]
+    private void LateUpdate()
+    {
+        if (maintainBinding) SyncToMap();
+    }
+
+    public bool TryValidateSetup(out string error)
+    {
+        if (GaussianRenderer == null)
+            error = "Assign Gaussian Renderer as the transform source.";
+        else if (MeshColliderObject == null)
+            error = "Assign a dedicated Mesh Collider Object.";
+        else if (MeshColliderObject == GaussianRenderer || GaussianRenderer.IsChildOf(MeshColliderObject))
+            error = "The mesh cannot be the renderer or an ancestor of it. Use a separate mesh object.";
+        else if (meshVertexAxes != MeshVertexAxes.OriginalPly && meshVertexAxes != MeshVertexAxes.AlreadyMirroredX)
+            error = "Choose a supported Mesh Vertex Axes value.";
+        else
+        {
+            error = null;
+            return true;
+        }
+        return false;
+    }
+
+    [ContextMenu("Match Gaussian Renderer")]
     public void SyncToMap()
     {
-        bool canSync = true;
-
-        if (MapTransform == null)
+        // Public calls from the aligner must also honor a disabled component.
+        if (!enabled) return;
+        if (!TryValidateSetup(out string error))
         {
-            if (!missingMapWarningLogged)
-            {
-                Debug.LogWarning("[MapColliderSync] Map transform is missing; collider sync cannot run.", this);
-                missingMapWarningLogged = true;
-            }
-
-            canSync = false;
-        }
-        else
-        {
-            missingMapWarningLogged = false;
-        }
-
-        if (GaussianRenderer == null)
-        {
-            if (!missingGaussianWarningLogged)
-            {
-                Debug.LogWarning("[MapColliderSync] Gaussian Renderer transform is missing; collider sync cannot run.", this);
-                missingGaussianWarningLogged = true;
-            }
-
-            canSync = false;
-        }
-        else
-        {
-            missingGaussianWarningLogged = false;
-        }
-
-        if (MeshColliderObject == null)
-        {
-            if (!missingColliderWarningLogged)
-            {
-                Debug.LogWarning("[MapColliderSync] Mesh collider transform is missing; collider sync cannot run.", this);
-                missingColliderWarningLogged = true;
-            }
-
-            canSync = false;
-        }
-        else
-        {
-            missingColliderWarningLogged = false;
-        }
-
-        if (!canSync)
-        {
+            if (lastWarning != error) Debug.LogWarning("[MapColliderSync] " + error, this);
+            lastWarning = error;
             return;
         }
+        lastWarning = null;
 
-        if (copyPositionFromMapRoot)
-        {
-            MeshColliderObject.position = MapTransform.position;
-        }
-        else
-        {
-            MeshColliderObject.position = GaussianRenderer.position;
-        }
-
-        if (copyScaleFromMapRoot)
-        {
-            MeshColliderObject.localScale = MapTransform.localScale;
-        }
-        else
-        {
-            MeshColliderObject.localScale = GaussianRenderer.localScale;
-        }
-
-        Quaternion baseRotation = useGaussianWorldRotation
-            ? GaussianRenderer.rotation
-            : MapTransform.rotation * GaussianRenderer.localRotation;
-
-        MeshColliderObject.rotation = baseRotation * Quaternion.Euler(rotationOffsetEuler);
+        // Do not decompose a mirrored/sheared world matrix. The desired local
+        // transform is explicit and independent of the target's old hierarchy.
+        if (MeshColliderObject.parent != GaussianRenderer)
+            MeshColliderObject.SetParent(GaussianRenderer, false);
+        Vector3 localScale = meshVertexAxes == MeshVertexAxes.AlreadyMirroredX
+            ? new Vector3(-1f, 1f, 1f) : Vector3.one;
+        if (MeshColliderObject.localPosition != Vector3.zero)
+            MeshColliderObject.localPosition = Vector3.zero;
+        if (MeshColliderObject.localRotation != Quaternion.identity)
+            MeshColliderObject.localRotation = Quaternion.identity;
+        if (MeshColliderObject.localScale != localScale)
+            MeshColliderObject.localScale = localScale;
     }
 }
