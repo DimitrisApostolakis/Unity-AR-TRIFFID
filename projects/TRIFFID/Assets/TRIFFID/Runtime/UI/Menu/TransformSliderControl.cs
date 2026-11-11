@@ -15,13 +15,13 @@ public class TransformSliderControl : MonoBehaviour
     private void Awake()
     {
         if (targetObject == null)
-            Debug.LogError("[TransformSliderControl] Target transform is missing; scale updates cannot be applied.", this);
+            TriffidLog.Error("TransformSliderControl", "Target transform is missing; scale updates cannot be applied.", this);
 
         if (!IsFinite(minScale) || !IsFinite(maxScale) || !IsFinite(upSensitivity))
-            Debug.LogWarning("[TransformSliderControl] Scale configuration contains a non-finite value.", this);
+            TriffidLog.Warning("TransformSliderControl", "Scale configuration contains a non-finite value.", this);
 
         if (minScale > maxScale)
-            Debug.LogWarning("[TransformSliderControl] minScale is greater than maxScale; slider output will be reversed.", this);
+            TriffidLog.Warning("TransformSliderControl", "minScale is greater than maxScale; slider output will be reversed.", this);
     }
 
     private static bool IsFinite(float value)

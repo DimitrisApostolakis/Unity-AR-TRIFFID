@@ -28,7 +28,7 @@ public class FreeLocomotion : MonoBehaviour
             inputBridge = GetComponent<XRControllerInputBridge>();
 
         if (inputBridge == null)
-            Debug.LogWarning("[FreeLocomotion] XRControllerInputBridge is not assigned. Locomotion input is disabled.");
+            TriffidLog.Warning("FreeLocomotion", "XRControllerInputBridge is not assigned. Locomotion input is disabled.");
     }
 
     private void Start()
@@ -39,13 +39,13 @@ public class FreeLocomotion : MonoBehaviour
     private void ValidateConfiguration()
     {
         if (!IsFinite(moveSpeed) || !IsFinite(verticalSpeed) || !IsFinite(rotationDegrees))
-            Debug.LogWarning("[FreeLocomotion] Movement or rotation configuration contains a non-finite value.", this);
+            TriffidLog.Warning("FreeLocomotion", "Movement or rotation configuration contains a non-finite value.", this);
 
         if (!IsFinite(snapCooldown) || snapCooldown < 0f)
-            Debug.LogWarning("[FreeLocomotion] snapCooldown must be finite and non-negative.", this);
+            TriffidLog.Warning("FreeLocomotion", "snapCooldown must be finite and non-negative.", this);
 
         if (Camera.main == null)
-            Debug.LogWarning("[FreeLocomotion] Camera.main is missing; camera-relative movement is unavailable.", this);
+            TriffidLog.Warning("FreeLocomotion", "Camera.main is missing; camera-relative movement is unavailable.", this);
     }
 
     private static bool IsFinite(float value)
@@ -139,7 +139,7 @@ public class FreeLocomotion : MonoBehaviour
 
         if (root == null)
         {
-            Debug.LogWarning("[FreeLocomotion] No root transform is available for snap turn.", this);
+            TriffidLog.Warning("FreeLocomotion", "No root transform is available for snap turn.", this);
             return;
         }
 

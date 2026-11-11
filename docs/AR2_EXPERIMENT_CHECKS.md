@@ -226,9 +226,9 @@ the pause recurs. This distinguishes repeated JSON work from other costs such
 as rendering or collider updates. A profiler capture is needed to attribute
 any remaining frame-time spike.
 
-For a hitch coinciding with `Saved to:`, enable **Log Save Stage Timings** on
-`JsonSpawner` (enabled by default). Its existing save message includes an
-`[AR2 SaveTiming]` suffix. Durations are milliseconds:
+For a hitch coinciding with `Saved GeoJSON to`, enable **Log Save Stage Timings** on
+`JsonSpawner` (enabled by default). Its existing save message includes a
+`[SaveTiming]` suffix. Durations are milliseconds:
 
 - `outbox`, `labels`, and `serialize` measure synchronous
   preparation on the main thread.
@@ -237,12 +237,12 @@ For a hitch coinciding with `Saved to:`, enable **Log Save Stage Timings** on
 - `resumeWait` measures the delay between worker completion and the main-thread
   continuation. A long delay can mean the main thread was busy elsewhere.
 - `followUp` indicates a queued save request or a newer persistence version.
-- `[AR2 SyncTiming]` reports synchronous synchronization commits taking at
+- `[SyncTiming]` reports synchronous synchronization commits taking at
   least 16 milliseconds. This threshold controls diagnostic output only.
 
 Capture the timing suffix and any nearby SyncTiming messages for the same
-spike. In the CPU Profiler, the `AR2.Save.*` samples identify save preparation,
-the completion log, and immediate queued preparation. `AR2.Sync.Commit`
+spike. In the CPU Profiler, the `TRIFFID.Save.*` samples identify save preparation,
+the completion log, and immediate queued preparation. `TRIFFID.Sync.Commit`
 identifies synchronous synchronization persistence. Keep Deep Profile off for
 an initial capture. Stage timings do not measure garbage collection or other
 work outside these samples, and the update itself does not establish the

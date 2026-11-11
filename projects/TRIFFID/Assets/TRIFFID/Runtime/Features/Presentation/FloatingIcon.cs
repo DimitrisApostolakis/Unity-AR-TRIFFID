@@ -52,43 +52,43 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
 
         ValidateRuntimeSetup();
 
-        Debug.Log($"[FloatingIcon] Setup: {gameObject.name} | PointData: {(myPointData != null ? myPointData.pointClass : "NULL")}");
+        TriffidLog.Verbose("FloatingIcon", $"Initialized '{gameObject.name}' (class: {(myPointData != null ? myPointData.pointClass : "<no PointData>")}).", this);
     }
 
     private void ValidateRuntimeSetup()
     {
         if (mainMap == null && !missingTargetMapWarningLogged)
         {
-            Debug.LogWarning("[FloatingIcon] Missing target map; floating position updates are unavailable.", this);
+            TriffidLog.Warning("FloatingIcon", "Missing target map; floating position updates are unavailable.", this);
             missingTargetMapWarningLogged = true;
         }
 
         if (mySpawner == null && !missingSpawnerWarningLogged)
         {
-            Debug.LogWarning("[FloatingIcon] JsonSpawner is missing; coordinate synchronization is unavailable.", this);
+            TriffidLog.Warning("FloatingIcon", "JsonSpawner is missing; coordinate synchronization is unavailable.", this);
             missingSpawnerWarningLogged = true;
         }
 
         if (myPointData == null && !missingPointDataWarningLogged)
         {
-            Debug.LogWarning("[FloatingIcon] PointData is missing; marker metadata updates are unavailable.", this);
+            TriffidLog.Warning("FloatingIcon", "PointData is missing; marker metadata updates are unavailable.", this);
             missingPointDataWarningLogged = true;
         }
 
         if (Camera.main == null && !missingCameraWarningLogged)
         {
-            Debug.LogWarning("[FloatingIcon] Camera.main is missing; billboard facing is unavailable.", this);
+            TriffidLog.Warning("FloatingIcon", "Camera.main is missing; billboard facing is unavailable.", this);
             missingCameraWarningLogged = true;
         }
 
         if (grabInteractable == null && !missingGrabInteractableWarningLogged)
         {
-            Debug.LogWarning("[FloatingIcon] XRGrabInteractable is missing; selected-state manipulation fallback is unavailable.", this);
+            TriffidLog.Warning("FloatingIcon", "XRGrabInteractable is missing; selected-state manipulation fallback is unavailable.", this);
             missingGrabInteractableWarningLogged = true;
         }
 
         if (float.IsNaN(geoUpdateInterval) || float.IsInfinity(geoUpdateInterval) || geoUpdateInterval < 0f)
-            Debug.LogWarning("[FloatingIcon] geoUpdateInterval must be finite and non-negative.", this);
+            TriffidLog.Warning("FloatingIcon", "geoUpdateInterval must be finite and non-negative.", this);
     }
 
     public void OnHoverEntered(HoverEnterEventArgs args)
@@ -143,7 +143,7 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
         if (myPointData == null)
             return;
 
-        Debug.Log($"[FloatingIcon] {reason}: {gameObject.name} / PointData: {myPointData.pointID}");
+        TriffidLog.Verbose("FloatingIcon", $"Marker focused ({reason}): '{gameObject.name}', feature {myPointData.pointID}.", this);
 
         if (reason == MarkerFocusReason.Hover)
             MarkerEventManager.RaiseMarkerHovered(myPointData);

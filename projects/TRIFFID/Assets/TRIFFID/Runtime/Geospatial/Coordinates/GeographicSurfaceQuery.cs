@@ -47,6 +47,28 @@ public static class GeographicSurfaceQuery
         }
     }
 
+    // Only the cast from above: the topmost surface on the vertical through
+    // the marker, or false when there is none. Unlike TryHit it never falls
+    // back to a cast from below, so the result is always the top layer.
+    public static bool TryHitFromAbove(Collider target, Vector3 marker, Vector3 up,
+        float startDistance, float rayDistance, LayerMask mask, out Vector3 surface)
+    {
+        surface = marker;
+        if (up.sqrMagnitude < 0.99f || !Finite(startDistance) || !Finite(rayDistance) || rayDistance <= 0f) return false;
+        if (target != null && !target.gameObject.activeInHierarchy) return false;
+        bool temporarilyEnabled = target != null && !target.enabled;
+        try
+        {
+            if (temporarilyEnabled) target.enabled = true;
+            Physics.SyncTransforms();
+            return Cast(target, marker + up * startDistance, -up, rayDistance, mask, out surface);
+        }
+        finally
+        {
+            if (temporarilyEnabled && target != null) target.enabled = false;
+        }
+    }
+
     private static bool Cast(Collider target, Vector3 origin, Vector3 direction, float distance, LayerMask mask, out Vector3 surface)
     {
         surface = origin;

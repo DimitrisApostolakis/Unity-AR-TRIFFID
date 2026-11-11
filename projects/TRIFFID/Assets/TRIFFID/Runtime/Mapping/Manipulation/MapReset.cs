@@ -25,7 +25,7 @@ public class MapReset : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning("[MapReset] Map target is missing; map reset cannot run.", this);
+            TriffidLog.Warning("MapReset", "Map target is missing; map reset cannot run.", this);
         }
 
         if (xrRig != null)
@@ -36,12 +36,12 @@ public class MapReset : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning("[MapReset] XR rig target is missing; XR rig reset cannot run.", this);
+            TriffidLog.Warning("MapReset", "XR rig target is missing; XR rig reset cannot run.", this);
         }
 
         if (controllerLogger == null)
         {
-            Debug.LogWarning("[MapReset] XRControllerLogger is not assigned; menu recenter will be skipped.", this);
+            TriffidLog.Warning("MapReset", "XRControllerLogger is not assigned; menu recenter will be skipped.", this);
             missingControllerWarningLogged = true;
         }
     }
@@ -69,7 +69,7 @@ public class MapReset : MonoBehaviour
         }
         else if (!missingControllerWarningLogged)
         {
-            Debug.LogWarning("[MapReset] XRControllerLogger is not assigned; menu recenter will be skipped.", this);
+            TriffidLog.Warning("MapReset", "XRControllerLogger is not assigned; menu recenter will be skipped.", this);
             missingControllerWarningLogged = true;
         }
         

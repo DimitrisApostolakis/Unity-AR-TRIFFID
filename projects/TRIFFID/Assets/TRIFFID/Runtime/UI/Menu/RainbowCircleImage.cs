@@ -62,26 +62,26 @@ public class RainbowCircleImage : MonoBehaviour
     private void ValidateConfiguration()
     {
         if (circleImage == null)
-            Debug.LogError("[RainbowCircleImage] Image target is missing; rainbow color animation cannot run.", this);
+            TriffidLog.Error("RainbowCircleImage", "Image target is missing; rainbow color animation cannot run.", this);
 
         if (!IsFinite(hueSpeed) || !IsFinite(saturationSpeed) || !IsFinite(brightnessSpeed) ||
             hueSpeed < 0f || saturationSpeed < 0f || brightnessSpeed < 0f)
         {
-            Debug.LogWarning("[RainbowCircleImage] Rainbow animation speeds must be finite and non-negative.", this);
+            TriffidLog.Warning("RainbowCircleImage", "Rainbow animation speeds must be finite and non-negative.", this);
         }
 
         if (!IsFinite(saturation) || !IsFinite(brightness) ||
             !IsFinite(saturationMin) || !IsFinite(saturationMax) ||
             !IsFinite(brightnessMin) || !IsFinite(brightnessMax))
         {
-            Debug.LogWarning("[RainbowCircleImage] HSV configuration contains a non-finite value.", this);
+            TriffidLog.Warning("RainbowCircleImage", "HSV configuration contains a non-finite value.", this);
         }
 
         if (!IsFinite(flashDuration) || flashDuration < 0f)
-            Debug.LogWarning("[RainbowCircleImage] flashDuration must be finite and non-negative.", this);
+            TriffidLog.Warning("RainbowCircleImage", "flashDuration must be finite and non-negative.", this);
 
         if (!IsFinite(pulseScale))
-            Debug.LogWarning("[RainbowCircleImage] pulseScale must be finite.", this);
+            TriffidLog.Warning("RainbowCircleImage", "pulseScale must be finite.", this);
     }
 
     private static bool IsFinite(float value)
@@ -148,7 +148,7 @@ public class RainbowCircleImage : MonoBehaviour
     public void OnButtonPressed()
     {
         PickedColor = CurrentColor();
-        Debug.Log($"[RainbowCircle] Picked → #{ColorUtility.ToHtmlStringRGB(PickedColor)}");
+        TriffidLog.Verbose("RainbowCircleImage", $"Picked color #{ColorUtility.ToHtmlStringRGB(PickedColor)}.", this);
 
         onColorPicked?.Invoke(PickedColor);
 

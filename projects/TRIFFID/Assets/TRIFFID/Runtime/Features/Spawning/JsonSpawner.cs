@@ -55,6 +55,10 @@ public partial class JsonSpawner : MonoBehaviour
     [Tooltip("Optional information panel that receives registrations for spawned annotation markers.")]
     public PointInfoPanel infoPanel;
 
+    [Header("Marker Footprints")]
+    [Tooltip("Draws a ground ring, centre dot and tether below every floating POI icon, marking where the feature lies on the map. Disable to reproduce captures recorded without footprints.")]
+    [SerializeField] private bool showMarkerFootprints = true;
+
     [Header("Menu State")]
     [Tooltip("Optional menu controller used when an operation needs to respect the current interaction mode.")]
     [SerializeField] private MenuButtonController menuButtonController;
@@ -168,8 +172,11 @@ public partial class JsonSpawner : MonoBehaviour
     private void ReportValidationError(string error)
     {
         LastValidationError = error;
-        Debug.LogWarning("[JsonSpawner] " + error);
-        if (infoPanel != null) infoPanel.ShowAnnotationError(error);
+        TriffidLog.Warning("JsonSpawner", error);
+        // The notification card is the normal route; the panel text is only a
+        // fallback for a project without the notification prefab.
+        if (!TriffidNotification.ShowError(error, "Cannot save") && infoPanel != null)
+            infoPanel.ShowAnnotationError(error);
     }
 
     private void UpdateSyncStatusLabels()
@@ -194,10 +201,10 @@ public partial class JsonSpawner : MonoBehaviour
     private void Awake()
     {
         if (string.IsNullOrWhiteSpace(geoJsonPath))
-            Debug.LogError("[JsonSpawner] GeoJSON input path is empty.", this);
+            TriffidLog.Error("JsonSpawner", "GeoJSON input path is empty.", this);
 
         if (!useSharedTransformPathJson && string.IsNullOrWhiteSpace(transformJsonPath))
-            Debug.LogError("[JsonSpawner] Transform config path is empty.", this);
+            TriffidLog.Error("JsonSpawner", "Transform config path is empty.", this);
 
         geoJsonPath = SanitizeGeoJsonPath(geoJsonPath);
         GetResolvedSaveFilePath();
@@ -209,7 +216,7 @@ public partial class JsonSpawner : MonoBehaviour
 
         if (prefabEntries == null)
         {
-            Debug.LogWarning("[JsonSpawner] Prefab entries list is null. Class-specific prefab lookup is disabled.");
+            TriffidLog.Warning("JsonSpawner", "Prefab entries list is missing; class-specific prefab lookup is disabled.");
         }
         else
         {
@@ -281,7 +288,7 @@ public partial class JsonSpawner : MonoBehaviour
             int colorIndex = 0;
             bool hasColorPalette = colorPalette != null && colorPalette.Count > 0;
             if (!hasColorPalette)
-                Debug.LogWarning("[JsonSpawner] Color palette is null or empty. Falling back to cyan for spawned geometry.");
+                TriffidLog.Warning("JsonSpawner", "Color palette is empty; spawned geometry falls back to cyan.");
 
             foreach (Feature feature in currentRootData.features)
             {
@@ -292,7 +299,7 @@ public partial class JsonSpawner : MonoBehaviour
                 if (!TryValidateFeatureForSpawn(feature, out string validationError))
                 {
                     string featureId = feature?.id ?? feature?.properties?.id ?? $"index {colorIndex}";
-                    Debug.LogWarning($"[JsonSpawner] Skipped malformed feature '{featureId}': {validationError}");
+                    TriffidLog.Warning("JsonSpawner", $"Skipped malformed feature '{featureId}': {validationError}");
                     colorIndex++;
                     continue;
                 }
@@ -304,12 +311,12 @@ public partial class JsonSpawner : MonoBehaviour
                 catch (Exception ex)
                 {
                     string featureId = feature.id ?? feature.properties?.id ?? $"index {colorIndex}";
-                    Debug.LogWarning($"[JsonSpawner] Skipped feature '{featureId}' after a spawn error: {ex.Message}");
+                    TriffidLog.Warning("JsonSpawner", $"Skipped feature '{featureId}' after a spawn error: {ex.Message}");
                 }
 
                 colorIndex++;
             }
-            Debug.Log($"[JsonSpawner] Spawned {nodeMappings.Count} coordinate nodes successfully.");
+            TriffidLog.Info("JsonSpawner", $"Spawned {nodeMappings.Count} coordinate node(s).");
 
             // SetAllColliders(true);
             ApplyColliderStateToSpawnedObjects(collidersDesiredActive, false);
@@ -319,7 +326,7 @@ public partial class JsonSpawner : MonoBehaviour
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[JsonSpawner] Failed to parse GeoJSON file '{loadPath}': {ex.Message}", this);
+                TriffidLog.Error("JsonSpawner", $"Failed to parse GeoJSON file '{loadPath}': {ex.Message}", this);
             }
             finally
             {
@@ -341,13 +348,13 @@ public partial class JsonSpawner : MonoBehaviour
     {
         if (response?.message == null || !response.message.latitude.HasValue || !response.message.longitude.HasValue)
         {
-            Debug.LogWarning("[JsonSpawner] SpawnLatestMqttIcon skipped: invalid MQTT payload.");
+            TriffidLog.Warning("JsonSpawner", "Latest MQTT icon not spawned: the payload is invalid.");
             return false;
         }
 
         if (!IsFiniteNumber(response.message.latitude.Value) || !IsFiniteNumber(response.message.longitude.Value))
         {
-            Debug.LogWarning("[JsonSpawner] SpawnLatestMqttIcon skipped: MQTT coordinates are not finite.");
+            TriffidLog.Warning("JsonSpawner", "Latest MQTT icon not spawned: the coordinates are not finite.");
             return false;
         }
 
@@ -398,7 +405,7 @@ public partial class JsonSpawner : MonoBehaviour
 
         if (spawned == null)
         {
-            Debug.LogWarning("[JsonSpawner] SpawnLatestMqttIcon failed to create the icon.");
+            TriffidLog.Warning("JsonSpawner", "Latest MQTT icon could not be created.");
             return false;
         }
 

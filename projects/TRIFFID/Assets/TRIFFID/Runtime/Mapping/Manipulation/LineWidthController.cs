@@ -30,16 +30,16 @@ public class LineWidthController : MonoBehaviour
     private void ValidateConfiguration()
     {
         if (!HasAnyValidLine())
-            Debug.LogWarning("[LineWidthController] No runtime lines found to update.", this);
+            TriffidLog.Warning("LineWidthController", "No runtime lines found to update.", this);
 
         if (!IsFinite(normalLineWidth) || normalLineWidth < 0f)
-            Debug.LogWarning("[LineWidthController] normalLineWidth must be finite and non-negative.", this);
+            TriffidLog.Warning("LineWidthController", "normalLineWidth must be finite and non-negative.", this);
 
         if (!IsFinite(wideLineWidth) || wideLineWidth < 0f)
-            Debug.LogWarning("[LineWidthController] wideLineWidth must be finite and non-negative.", this);
+            TriffidLog.Warning("LineWidthController", "wideLineWidth must be finite and non-negative.", this);
 
         if (animateTransition && (!IsFinite(widthLerpSpeed) || widthLerpSpeed <= 0f))
-            Debug.LogWarning("[LineWidthController] widthLerpSpeed must be finite and greater than zero while animation is enabled.", this);
+            TriffidLog.Warning("LineWidthController", "widthLerpSpeed must be finite and greater than zero while animation is enabled.", this);
     }
 
     public void ToggleLineWidth()
@@ -103,14 +103,14 @@ public class LineWidthController : MonoBehaviour
 
         if (!IsFinite(targetWidth))
         {
-            Debug.LogWarning("[LineWidthController] Ignored a non-finite target line width.", this);
+            TriffidLog.Warning("LineWidthController", "Ignored a non-finite target line width.", this);
             animCoroutine = null;
             yield break;
         }
 
         if (!IsFinite(currentWidth))
         {
-            Debug.LogWarning("[LineWidthController] Replaced a non-finite current line width with the requested target.", this);
+            TriffidLog.Warning("LineWidthController", "Replaced a non-finite current line width with the requested target.", this);
             SetLineWidth(targetWidth);
             animCoroutine = null;
             yield break;
@@ -118,7 +118,7 @@ public class LineWidthController : MonoBehaviour
 
         if (!IsFinite(widthLerpSpeed) || widthLerpSpeed <= 0f)
         {
-            Debug.LogWarning("[LineWidthController] Width interpolation speed must be finite and greater than zero. Applied the target width immediately.", this);
+            TriffidLog.Warning("LineWidthController", "Width interpolation speed must be finite and greater than zero. Applied the target width immediately.", this);
             SetLineWidth(targetWidth);
             animCoroutine = null;
             yield break;

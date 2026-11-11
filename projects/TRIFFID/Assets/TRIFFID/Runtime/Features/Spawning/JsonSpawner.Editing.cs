@@ -12,14 +12,15 @@ public partial class JsonSpawner
 {
     public bool DeleteFeatureByNode(Transform node, bool requireDrawMode = false)
     {
-        if (node == null) { Debug.LogWarning("[JsonSpawner] DeleteFeatureByNode: node is null."); return false; }
+        if (node == null) { TriffidLog.Warning("JsonSpawner", "Delete ignored: no node was provided."); return false; }
 
         if (menuButtonController == null)
             menuButtonController = FindFirstObjectByType<MenuButtonController>();
 
         if (requireDrawMode && (menuButtonController == null || !menuButtonController.IsDrawModeActive()))
         {
-            Debug.LogWarning("[JsonSpawner] Delete blocked because draw mode is not active.");
+            TriffidLog.Warning("JsonSpawner", "Delete blocked: switch to Draw mode to delete features.");
+            TriffidNotification.ShowError("Switch to Draw mode to delete annotations.", "Delete blocked");
             return false;
         }
 
@@ -27,17 +28,17 @@ public partial class JsonSpawner
 
         if (IsProtectedLatestMqttNode(node, mapping))
         {
-            Debug.LogWarning("[JsonSpawner] Delete blocked for protected MQTT marker.");
+            TriffidLog.Warning("JsonSpawner", "Delete blocked: the latest MQTT marker is protected.");
+            TriffidNotification.ShowError("The live UGV marker cannot be deleted.", "Delete blocked");
             return false;
         }
 
-        Debug.Log($"[Delete] Looking for: {node.name}");
-        Debug.Log($"[Delete] Found mapping: {(mapping != null ? mapping.parentFeature?.id : "NULL")}");
+        TriffidLog.Verbose("JsonSpawner", $"Delete requested for '{node.name}' (feature: {(mapping != null ? mapping.parentFeature?.id : "<unmapped>")}).");
     
         if (mapping == null)
         {
             PointData pd = node.GetComponentInParent<PointData>();
-            Debug.Log($"[Delete] PointData found: {(pd != null ? pd.pointID : "NULL")}");
+            TriffidLog.Verbose("JsonSpawner", $"'{node.name}' has no node mapping; using PointData feature {(pd != null ? pd.pointID : "<none>")}.");
 
             string featureId = pd != null ? pd.pointID : null;
             bool removedFeature = RemoveFeatureById(featureId);
@@ -46,7 +47,7 @@ public partial class JsonSpawner
             if (removedFeature || removedStroke)
             {
                 SaveToJson();
-                Debug.Log($"[JsonSpawner] Deleted unmapped line/feature (featureId: {featureId ?? "-"}).");
+                TriffidLog.Info("JsonSpawner", $"Deleted unmapped feature {featureId ?? "<no id>"} and saved.");
                 return true;
             }
             
@@ -54,7 +55,7 @@ public partial class JsonSpawner
             {
                 spawnedObjects.Remove(node.gameObject);
                 Destroy(node.gameObject);
-                Debug.Log($"[JsonSpawner] Deleted orphaned object: {node.name}");
+                TriffidLog.Info("JsonSpawner", $"Deleted orphaned object '{node.name}' (not part of any feature).");
             }
             return true;
         }
@@ -118,7 +119,7 @@ public partial class JsonSpawner
         
 
         SaveToJson();
-        Debug.Log($"[JsonSpawner] Feature with ID: {featureToDelete.id} deleted and JSON saved.");
+        TriffidLog.Info("JsonSpawner", $"Deleted feature {featureToDelete.id} and saved.");
         return true;
     }
 
@@ -333,7 +334,7 @@ public partial class JsonSpawner
     {
         if (!TryGetPrefabForClass(className, out GameObject prefab) || prefab == null)
         {
-            Debug.LogWarning($"[JsonSpawner] Prefab not found for class: {className}");
+            TriffidLog.Warning("JsonSpawner", $"Cannot spawn '{className}': no prefab is configured for this class.");
             return;
         }
 
@@ -429,7 +430,7 @@ public partial class JsonSpawner
                 MarkerEventManager.RaiseMarkerSelected(pd);
         }
 
-        Debug.Log($"[SpawnPrefab] Successfully spawned {className} (ID: {newId}) as Point and saved.");
+        TriffidLog.Info("JsonSpawner", $"Spawned {className} point {newId} and saved.");
     }
 
     private static void EnsurePositiveScaleForBoxCollider(GameObject obj)
@@ -450,6 +451,11 @@ public partial class JsonSpawner
 
     private static string ResolveLineColorHex(Feature feature, Color fallbackColor)
     {
+        // A Mission Planner route is identified by its class, so its colour
+        // comes from the settings and is the same whoever produced the feature.
+        if (MissionPathColors.TryGetColor(feature?.properties?.className, out Color missionColor))
+            return "#" + ColorUtility.ToHtmlStringRGB(missionColor);
+
         string markerHex = feature?.properties?.marker_color;
         if (!string.IsNullOrEmpty(markerHex) && ColorUtility.TryParseHtmlString(markerHex, out _))
             return markerHex.StartsWith("#", StringComparison.Ordinal) ? markerHex : "#" + markerHex;
@@ -554,7 +560,7 @@ public partial class JsonSpawner
 
         ApplyFeatureVisibility(obj, newFeature);
         SaveToJson();
-        Debug.Log($"[JsonSpawner] AddPointFeatureAndSave: {className} ID={newId}");
+        TriffidLog.Info("JsonSpawner", $"Added {className} point {newId} and saved.");
         return newId;
     }
 
@@ -576,8 +582,12 @@ public partial class JsonSpawner
             if (firstAlt == 0) firstAlt = wgs.alt;
         }
 
+        // Mission Planner routes keep their class; any other line stays a road.
+        MissionPathType missionPath;
+        bool isMissionPath = MissionPaths.TryParse(className, out missionPath);
+        string lineClassName = isMissionPath ? MissionPaths.ClassName(missionPath) : "road";
+        if (isMissionPath) color = MissionPathColors.ColorOf(missionPath);
         string colorHex = "#" + ColorUtility.ToHtmlStringRGB(color);
-        const string lineClassName = "road";
         const string lineCategory = "navigation";
 
         Feature newFeature = new Feature
@@ -605,7 +615,7 @@ public partial class JsonSpawner
         }
 
         SaveToJson();
-        Debug.Log($"[JsonSpawner] AddLineFeatureAndSave: {lineClassName} ID={newId} ({worldPositions.Count} points)");
+        TriffidLog.Info("JsonSpawner", $"Added {lineClassName} line {newId} ({worldPositions.Count} vertices) and saved.");
         return newId;
     }
 
@@ -615,7 +625,7 @@ public partial class JsonSpawner
 
         if (!XRControllerLogger.TryNormalizePolygonClass(className, out string normalizedClass))
         {
-            Debug.LogWarning($"[JsonSpawner] Cannot save polygon: unsupported drawable class '{className ?? "<missing>"}'.");
+            TriffidLog.Warning("JsonSpawner", $"Cannot save polygon: unsupported drawable class '{className ?? "<missing>"}'.");
             return null;
         }
 
@@ -675,7 +685,7 @@ public partial class JsonSpawner
         }
 
         SaveToJson();
-        Debug.Log($"[JsonSpawner] AddPolygonFeatureAndSave: {normalizedClass} ({normalizedCategory}) ID={newId} ({worldPositions.Count} points)");
+        TriffidLog.Info("JsonSpawner", $"Added {normalizedClass} polygon {newId} ({normalizedCategory}, {worldPositions.Count} vertices) and saved.");
         return newId;
     }
 
@@ -782,7 +792,7 @@ public partial class JsonSpawner
             UpdateFeatureHeightAboveSurfaceData(feature);
             MarkDataDirty();
             SaveCurrentStateToPersistentStorage();
-            Debug.Log($"[JsonSpawner] RegisterRuntimeLineNodes: feature {featureId}, nodes registered={registered}");
+            TriffidLog.Verbose("JsonSpawner", $"Registered {registered} line node(s) for feature {featureId}.");
         }
 
         return registered > 0;
@@ -883,7 +893,7 @@ public partial class JsonSpawner
             UpdateFeatureHeightAboveSurfaceData(feature);
             MarkDataDirty();
             SaveCurrentStateToPersistentStorage();
-            Debug.Log($"[JsonSpawner] RegisterRuntimePolygonNodes: feature {featureId}, nodes registered={registered}");
+            TriffidLog.Verbose("JsonSpawner", $"Registered {registered} polygon node(s) for feature {featureId}.");
         }
 
         return registered > 0;

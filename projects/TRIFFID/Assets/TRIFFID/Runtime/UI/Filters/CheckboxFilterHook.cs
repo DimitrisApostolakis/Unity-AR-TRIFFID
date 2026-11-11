@@ -36,7 +36,7 @@ public class CheckboxFilterHook : MonoBehaviour
             {
                 if (!missingItemWarningLogged)
                 {
-                    Debug.LogWarning("[CheckboxFilterHook] No compatible checkbox/interactable component could be detected.", this);
+                    TriffidLog.Warning("CheckboxFilterHook", "No compatible checkbox/interactable component could be detected.", this);
                     missingItemWarningLogged = true;
                 }
                 return;
@@ -57,10 +57,10 @@ public class CheckboxFilterHook : MonoBehaviour
         {
             missingItemWarningLogged = false;
             invalidItemWarningLogged = false;
-            Debug.Log($"[CheckboxFilterHook] Detected '{item.GetType().Name}'.", this);
+            TriffidLog.Info("CheckboxFilterHook", $"Detected toggle component '{item.GetType().Name}'.", this);
         }
         else
-            Debug.LogWarning("[CheckboxFilterHook] No compatible component found.", this);
+            TriffidLog.Warning("CheckboxFilterHook", "No compatible checkbox/toggle component found on this object.", this);
     }
 
     private void LogMissingGroupOnce()
@@ -68,7 +68,7 @@ public class CheckboxFilterHook : MonoBehaviour
         if (missingGroupWarningLogged)
             return;
 
-        Debug.LogWarning("[CheckboxFilterHook] CheckboxFilterGroup is not assigned.", this);
+        TriffidLog.Warning("CheckboxFilterHook", "CheckboxFilterGroup is not assigned.", this);
         missingGroupWarningLogged = true;
     }
 
@@ -78,7 +78,7 @@ public class CheckboxFilterHook : MonoBehaviour
             return;
 
         string typeName = configuredItem != null ? configuredItem.GetType().Name : "null";
-        Debug.LogWarning($"[CheckboxFilterHook] Assigned item '{typeName}' does not expose a supported boolean toggle API.", this);
+        TriffidLog.Warning("CheckboxFilterHook", $"Assigned item '{typeName}' does not expose a supported boolean toggle API.", this);
         invalidItemWarningLogged = true;
     }
 

@@ -93,7 +93,7 @@ public static class AppPerformanceCollector
             frames=new StreamWriter(Path.Combine(capture,"frames.csv"));frames.WriteLine(FrameHeader);
             events=new StreamWriter(Path.Combine(capture,"events.jsonl"));phase=0;lastFrame=-1;BeginPhase();
             EditorApplication.update+=Tick;
-            Debug.Log("[AppPerformance] Capturing seven annotation phases, approximately 2 minutes. Keep the camera still, Game view visible and Play UNPAUSED; do not edit or grab anything. Capture: "+capture);
+            TriffidLog.Info("AppPerformance", "Capturing seven annotation phases, approximately 2 minutes. Keep the camera still, Game view visible and Play UNPAUSED; do not edit or grab anything. Capture: "+capture);
         }
         catch(Exception error){Stop(false,error.ToString());Debug.LogException(error);}
     }
@@ -216,7 +216,8 @@ public static class AppPerformanceCollector
                 sourceFile==(File.Exists(source.saveFilePath)?AppNumericsCollector.Hash(source.saveFilePath):null)&&sourceMatrix==AppNumericsCollector.MatrixText(map);
             metadata["source_save_sha256_after"]=source!=null&&File.Exists(source.saveFilePath)?AppNumericsCollector.Hash(source.saveFilePath):null;
             AppNumericsCollector.Finish(capture,metadata);
-            Debug.Log("[AppPerformance] "+(completed?"Completed":"INCOMPLETE")+" Editor capture: "+capture);
+            if(completed)TriffidLog.Info("AppPerformance","Editor capture completed: "+capture);
+            else TriffidLog.Warning("AppPerformance","Editor capture INCOMPLETE (kept as failure evidence): "+capture);
         }
         finally { source=null;fixture=null;frames=null;events=null;originalMaterials.Clear(); }
     }

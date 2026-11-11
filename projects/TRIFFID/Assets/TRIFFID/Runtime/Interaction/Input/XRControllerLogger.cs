@@ -106,6 +106,8 @@ public class XRControllerLogger : MonoBehaviour
         public bool IsSaved;
         public bool IsPolygon;
         public Color StrokeColor;
+        // GeoJSON class the line or polygon is saved with; fixed when it is started.
+        public string LineClass;
     }
 
     [Header("Core Dependencies")]
@@ -200,6 +202,7 @@ public class XRControllerLogger : MonoBehaviour
     private InteractionState currentState = InteractionState.Navigation;
     private DrawColor currentColor = DrawColor.Red;
     private PolygonCategory currentPolygonCategory = PolygonCategory.Unsafe;
+    private MissionPathType currentMissionPath = MissionPathType.Responder;
     private int selectedPrefabIndex = 0;
 
     private Color _customColor = Color.white;
@@ -242,10 +245,10 @@ public class XRControllerLogger : MonoBehaviour
             inputBridge = GetComponent<XRControllerInputBridge>();
 
         if (inputBridge == null)
-            Debug.LogWarning("[XRControllerLogger] Input bridge is missing; Quest/XR controller input is unavailable.", this);
+            TriffidLog.Warning("XRControllerLogger", "Input bridge is missing; Quest/XR controller input is unavailable.", this);
 
         if (_persistence == null)
-            Debug.LogWarning("[XRControllerLogger] Persistence adapter is missing; annotations may not be saved.", this);
+            TriffidLog.Warning("XRControllerLogger", "Persistence adapter is missing; annotations may not be saved.", this);
 
         ApplyState(currentState);
     }
@@ -319,7 +322,7 @@ public class XRControllerLogger : MonoBehaviour
             currentState != InteractionState.DrawingLine &&
             currentState != InteractionState.DrawingPolygon)
         {
-            Debug.LogWarning("[XRControllerLogger] Keyboard placement ignored because Draw mode is not active.");
+            TriffidLog.Warning("XRControllerLogger", "Keyboard placement ignored because Draw mode is not active.");
             return;
         }
 
@@ -330,7 +333,7 @@ public class XRControllerLogger : MonoBehaviour
 
         if (!activeSessionMatchesRequestedTool)
         {
-            Debug.LogWarning("[XRControllerLogger] Finish or cancel the active line/polygon before switching keyboard drawing tools.");
+            TriffidLog.Warning("XRControllerLogger", "Finish or cancel the active line/polygon before switching keyboard drawing tools.");
             return;
         }
 
@@ -370,7 +373,7 @@ public class XRControllerLogger : MonoBehaviour
         {
             if (!_missingPcDebugCameraDiagnosticLogged)
             {
-                Debug.LogError("[XRControllerLogger] Cannot place annotation: Camera.main is missing in PC debug mode.", this);
+                TriffidLog.Error("XRControllerLogger", "Cannot place annotation: Camera.main is missing in PC debug mode.", this);
                 _missingPcDebugCameraDiagnosticLogged = true;
             }
             return false;
@@ -393,8 +396,39 @@ public class XRControllerLogger : MonoBehaviour
     public void SetColorYellow() { currentColor = DrawColor.Yellow; selectedPrefabIndex = 1; }
     public void SetColorBlue() { currentColor = DrawColor.Blue; selectedPrefabIndex = 2; }
 
-    public void SetPolygonCategorySafe() => currentPolygonCategory = PolygonCategory.Safe;
-    public void SetPolygonCategoryUnsafe() => currentPolygonCategory = PolygonCategory.Unsafe;
+    public void SetPolygonCategorySafe() => SetPolygonCategory(PolygonCategory.Safe);
+    public void SetPolygonCategoryUnsafe() => SetPolygonCategory(PolygonCategory.Unsafe);
+
+    // A polygon already being drawn is finished first so it keeps its own class and colour.
+    private void SetPolygonCategory(PolygonCategory category)
+    {
+        if (category != currentPolygonCategory && currentState == InteractionState.DrawingPolygon)
+            CommitCurrentLineIfNeeded();
+
+        currentPolygonCategory = category;
+    }
+
+    // Safe and Unsafe polygons take the colour of their menu button.
+    private static Color GetPolygonColor(PolygonCategory category)
+    {
+        Color color = category == PolygonCategory.Safe ? SemanticPalette.Life : SemanticPalette.ActiveHazard;
+        color.a = 1f;
+        return color;
+    }
+
+    // Mission Planner: the next line is saved as a Responders or a UGV route.
+    // A line already being drawn is finished first so it keeps its own kind.
+    public void SetMissionPathResponders() => SetMissionPath(MissionPathType.Responder);
+    public void SetMissionPathUgv() => SetMissionPath(MissionPathType.Ugv);
+
+    private void SetMissionPath(MissionPathType type)
+    {
+        if (type != currentMissionPath && currentState == InteractionState.DrawingLine)
+            CommitCurrentLineIfNeeded();
+
+        currentMissionPath = type;
+        TriffidLog.Verbose("XRControllerLogger", $"Mission path set to {MissionPaths.ClassName(type)}.");
+    }
 
     public void SetColorFromRainbow(Color picked)
     {
@@ -435,13 +469,13 @@ public class XRControllerLogger : MonoBehaviour
     public void SetSelectedPrefabIndex(int index)
     {
         selectedPrefabIndex = index;
-        Debug.Log($"[XRControllerLogger] Selected prefab index: {index}");
+        TriffidLog.Verbose("XRControllerLogger", $"Selected point prefab #{index}.");
     }
 
     public void ExportAnnotationsToGeoJson()
     {
         CommitCurrentLineIfNeeded();
-        Debug.Log("[XRControllerLogger] Export now runs through persistence service at save time.");
+        TriffidLog.Info("XRControllerLogger", "Annotations are exported automatically on save; no separate export is needed.");
     }
 
     private void SetState(InteractionState newState)
@@ -457,7 +491,7 @@ public class XRControllerLogger : MonoBehaviour
 
         currentState = newState;
         ApplyState(currentState);
-        Debug.Log($"[XRControllerLogger] State => {currentState}");
+        TriffidLog.Info("XRControllerLogger", $"Interaction state: {currentState}.");
     }
 
     private void ApplyState(InteractionState state)
@@ -551,7 +585,7 @@ public class XRControllerLogger : MonoBehaviour
         {
             if (!_emptyMapLayerDiagnosticLogged)
             {
-                Debug.LogError("[XRControllerLogger] Cannot place annotation: mapLayer is empty.", this);
+                TriffidLog.Error("XRControllerLogger", "Cannot place annotation: mapLayer is empty.", this);
                 _emptyMapLayerDiagnosticLogged = true;
             }
             return false;
@@ -576,7 +610,7 @@ public class XRControllerLogger : MonoBehaviour
             {
                 if (!_missingXrRayDiagnosticLogged)
                 {
-                    Debug.LogError("[XRControllerLogger] Cannot place annotation: XR ray interactor is missing.", this);
+                    TriffidLog.Error("XRControllerLogger", "Cannot place annotation: XR ray interactor is missing.", this);
                     _missingXrRayDiagnosticLogged = true;
                 }
                 return false;
@@ -590,7 +624,7 @@ public class XRControllerLogger : MonoBehaviour
             {
                 if (!_missingXrRayDiagnosticLogged)
                 {
-                    Debug.LogError("[XRControllerLogger] Cannot place annotation: XR ray origin is missing.", this);
+                    TriffidLog.Error("XRControllerLogger", "Cannot place annotation: XR ray origin is missing.", this);
                     _missingXrRayDiagnosticLogged = true;
                 }
                 return false;
@@ -609,12 +643,30 @@ public class XRControllerLogger : MonoBehaviour
             : GeographicSurfaceQuery.TryRaycast(null, ray, 100f, mapLayer, out hit);
         if (!found)
         {
-            Debug.LogWarning("[XRControllerLogger] No map surface hit. Aim at the map to place an annotation vertex.");
+            TriffidLog.Warning("XRControllerLogger", "No map surface hit. Aim at the map to place an annotation vertex.");
+            TriffidNotification.ShowError("Aim at the map to place a point or vertex.", "No surface");
             return false;
         }
 
-        pos = hit.point + hit.normal * baseVerticalOffset;
-        rot = Quaternion.FromToRotation(Vector3.up, hit.normal);
+        // Offset towards the side the ray came from. A surface hit from behind
+        // (its normal pointing away) would otherwise push the point through it.
+        Vector3 normal = hit.normal;
+        if (Vector3.Dot(normal, ray.direction) > 0f)
+            normal = -normal;
+
+        pos = hit.point + normal * baseVerticalOffset;
+        rot = Quaternion.FromToRotation(Vector3.up, normal);
+
+        // Aiming at the underside of the map, or through a gap in it, lands
+        // below the surface. Such a point is moved straight up onto the map.
+        if (jsonSpawner != null && jsonSpawner.TryKeepAboveSurface(ref pos, Mathf.Max(0f, baseVerticalOffset)))
+        {
+            Vector3 up;
+            float unitsPerMetre;
+            if (jsonSpawner.TryGetMapVertical(out up, out unitsPerMetre))
+                rot = Quaternion.FromToRotation(Vector3.up, up);
+        }
+
         return true;
     }
 
@@ -659,7 +711,7 @@ public class XRControllerLogger : MonoBehaviour
 
         if (!_missingPointPrefabDiagnosticLogged)
         {
-            Debug.LogWarning("[XRControllerLogger] Selected point prefab is missing; using the existing primitive fallback.", this);
+            TriffidLog.Warning("XRControllerLogger", "Selected point prefab is missing; using the existing primitive fallback.", this);
             _missingPointPrefabDiagnosticLogged = true;
         }
 
@@ -717,7 +769,10 @@ public class XRControllerLogger : MonoBehaviour
 
         FloatingIcon icon = poi.GetComponent<FloatingIcon>();
         if (icon != null)
+        {
             icon.Setup(parentRef, jsonSpawner);
+            jsonSpawner.PrepareMarkerVisuals(poi);
+        }
 
         if (jsonSpawner.infoPanel == null)
             return;
@@ -784,9 +839,11 @@ public class XRControllerLogger : MonoBehaviour
 
     private LineSession CreateLineSession()
     {
-        Color color = GetCurrentColor();
         bool polygonMode = currentState == InteractionState.DrawingPolygon;
-        var strokeGo = new GameObject($"Stroke_{(polygonMode ? "Polygon" : "Line")}_{currentColor}_{_lineSessions.Count}");
+        // A line is always a Mission Planner route and takes the route colour.
+        Color color = polygonMode ? GetPolygonColor(currentPolygonCategory) : MissionPathColors.ColorOf(currentMissionPath);
+        string strokeLabel = polygonMode ? currentPolygonCategory.ToString() : currentMissionPath.ToString();
+        var strokeGo = new GameObject($"Stroke_{(polygonMode ? "Polygon" : "Line")}_{strokeLabel}_{_lineSessions.Count}");
 
         Transform parent = GetAnnotationParent();
         if (parent != null)
@@ -795,7 +852,7 @@ public class XRControllerLogger : MonoBehaviour
         LineRenderer lineRenderer = strokeGo.AddComponent<LineRenderer>();
         if (lineMaterial == null && !_missingLineMaterialDiagnosticLogged)
         {
-            Debug.LogWarning("[XRControllerLogger] Line material is missing; using the existing Unlit/Color fallback.", this);
+            TriffidLog.Warning("XRControllerLogger", "Line material is missing; using the existing Unlit/Color fallback.", this);
             _missingLineMaterialDiagnosticLogged = true;
         }
         else if (lineMaterial != null)
@@ -815,6 +872,7 @@ public class XRControllerLogger : MonoBehaviour
         lineRenderer.endWidth = lineWidth;
         lineRenderer.useWorldSpace = true;
         lineRenderer.loop = polygonMode;
+        AnnotationLineStyle.Apply(lineRenderer, polygonMode);
 
         RuntimeLine runtimeLine = strokeGo.AddComponent<RuntimeLine>();
         runtimeLine.Initialize(lineRenderer, true);
@@ -826,7 +884,8 @@ public class XRControllerLogger : MonoBehaviour
             Renderer = lineRenderer,
             RuntimeLine = runtimeLine,
             IsPolygon = polygonMode,
-            StrokeColor = color
+            StrokeColor = color,
+            LineClass = polygonMode ? GetPolygonClassName(currentPolygonCategory) : MissionPaths.ClassName(currentMissionPath)
         };
     }
 
@@ -834,7 +893,7 @@ public class XRControllerLogger : MonoBehaviour
     {
         if (!IsLineSessionAlive(line))
         {
-            Debug.LogWarning("[XRControllerLogger] Skipped CreateLineNode because line session is no longer valid.");
+            TriffidLog.Warning("XRControllerLogger", "Line node not created: the drawing session has already ended.");
             return null;
         }
 
@@ -853,7 +912,7 @@ public class XRControllerLogger : MonoBehaviour
         {
             if (!_missingLineNodePrefabDiagnosticLogged)
             {
-                Debug.LogWarning("[XRControllerLogger] Line node prefab is missing; using the existing empty-node fallback for line and polygon drawing.", this);
+                TriffidLog.Warning("XRControllerLogger", "Line node prefab is missing; using the existing empty-node fallback for line and polygon drawing.", this);
                 _missingLineNodePrefabDiagnosticLogged = true;
             }
 
@@ -910,23 +969,40 @@ public class XRControllerLogger : MonoBehaviour
             return true;
         }
         CompactDeadNodes(activeLine);
+        // A draft vertex dragged under the map before finishing is lifted back
+        // onto the surface, so the saved geometry is never below it.
+        if (jsonSpawner != null)
+        {
+            foreach (Transform node in activeLine.Nodes)
+            {
+                if (node == null) continue;
+                Vector3 vertex = node.position;
+                if (jsonSpawner.TryKeepAboveSurface(ref vertex, Mathf.Max(0f, baseVerticalOffset)))
+                    node.position = vertex;
+            }
+        }
         if (activeLine.RuntimeLine != null) activeLine.RuntimeLine.RefreshNow();
         List<Vector3> positions = new List<Vector3>(activeLine.Nodes.Count);
         foreach (Transform node in activeLine.Nodes) if (node != null) positions.Add(node.position);
         bool polygon = activeLine.IsPolygon;
         if (positions.Count < (polygon ? 3 : 2))
         {
-            Debug.LogWarning("[XRControllerLogger] Add more vertices or cancel the unfinished annotation.");
+            TriffidLog.Warning("XRControllerLogger", "Add more vertices or cancel the unfinished annotation.");
+            // Not while this component is being disabled (scene unload or quit).
+            if (isActiveAndEnabled)
+                TriffidNotification.ShowError(polygon
+                    ? "A zone needs at least 3 vertices. Add more or undo the ones placed."
+                    : "A route needs at least 2 vertices. Add more or undo the one placed.", "Not finished");
             return false;
         }
         Color color = activeLine.StrokeColor;
         string id = polygon
-            ? _persistence?.SavePolygon(positions, GetPolygonClassName(currentPolygonCategory), "navigation", color)
-            : _persistence?.SaveLine(positions, BuildDrawingClassName(color), color);
+            ? _persistence?.SavePolygon(positions, activeLine.LineClass ?? GetPolygonClassName(currentPolygonCategory), "navigation", color)
+            : _persistence?.SaveLine(positions, activeLine.LineClass ?? BuildDrawingClassName(color), color);
         if (string.IsNullOrEmpty(id))
         {
             // Validation failed. Keep the session and undo history available.
-            Debug.LogWarning("[XRControllerLogger] Annotation remains editable because saving failed.");
+            TriffidLog.Warning("XRControllerLogger", "Annotation remains editable because saving failed.");
             return false;
         }
         if (polygon) _persistence.RegisterRuntimePolygonNodes(id, activeLine.Nodes);
@@ -998,8 +1074,8 @@ public class XRControllerLogger : MonoBehaviour
 
             pd.lineColorHex = "#" + ColorUtility.ToHtmlStringRGB(lineColor);
             pd.pointClass = line != null && line.IsPolygon
-                ? GetPolygonClassName(currentPolygonCategory)
-                : "road";
+                ? (line.LineClass ?? GetPolygonClassName(currentPolygonCategory))
+                : (line != null && !string.IsNullOrEmpty(line.LineClass) ? line.LineClass : "road");
             pd.pointID = featureId;
             pd.category = "navigation";
             pd.source = "Ground Station";

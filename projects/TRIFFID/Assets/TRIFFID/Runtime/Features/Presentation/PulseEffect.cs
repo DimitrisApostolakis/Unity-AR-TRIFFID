@@ -9,6 +9,26 @@ public class PulseEffect : MonoBehaviour
     [SerializeField] private float maxScale = 2.5f;
 
     private bool isPulsing = false;
+
+    // Read by MarkerFootprint so the ground ring emphasises the same marker.
+    public bool IsPulsing => isPulsing;
+
+    // The halo takes the marker's group colour; its opacity is animated separately.
+    public void SetTint(Color tint)
+    {
+        if (ringRenderer == null)
+            return;
+
+        tint.a = ringRenderer.color.a;
+        ringRenderer.color = tint;
+    }
+
+    // Keeps the ring on the drawn icon when the sprite pivot is not its centre.
+    public void CenterOn(Vector3 worldPosition)
+    {
+        if (ring != null)
+            ring.position = worldPosition;
+    }
     private Coroutine pulseRoutine;
     private MaterialPropertyBlock mpb;
     private static readonly int ColorProperty = Shader.PropertyToID("_Color");
@@ -22,16 +42,16 @@ public class PulseEffect : MonoBehaviour
     private void ValidateConfiguration()
     {
         if (ring == null)
-            Debug.LogError("[PulseEffect] Ring transform is missing; pulse animation cannot run.", this);
+            TriffidLog.Error("PulseEffect", "Ring transform is missing; pulse animation cannot run.", this);
 
         if (ringRenderer == null)
-            Debug.LogError("[PulseEffect] Ring SpriteRenderer is missing; pulse visuals are unavailable.", this);
+            TriffidLog.Error("PulseEffect", "Ring SpriteRenderer is missing; pulse visuals are unavailable.", this);
 
         if (!IsFinite(duration) || duration <= 0f)
-            Debug.LogWarning("[PulseEffect] duration must be finite and greater than zero.", this);
+            TriffidLog.Warning("PulseEffect", "duration must be finite and greater than zero.", this);
 
         if (!IsFinite(maxScale) || maxScale < 0f)
-            Debug.LogWarning("[PulseEffect] maxScale must be finite and non-negative.", this);
+            TriffidLog.Warning("PulseEffect", "maxScale must be finite and non-negative.", this);
     }
 
     private static bool IsFinite(float value)
@@ -43,6 +63,11 @@ public class PulseEffect : MonoBehaviour
     public void StartPulse()
     {
         if (ring == null || ringRenderer == null)
+            return;
+
+        // A marker hidden by a category filter cannot run the animation. Starting
+        // it anyway logged an error and left the pulse flagged as running.
+        if (!isActiveAndEnabled)
             return;
 
         isPulsing = true;
@@ -76,16 +101,22 @@ public class PulseEffect : MonoBehaviour
         while (isPulsing)
         {
             float timer = 0f;
-            float safeDuration = duration > 0.01f ? duration : 0.01f;
+            TriffidVisualSettings settings = TriffidVisualSettings.Current;
+            float cycleSeconds = settings.overrideHalo ? settings.haloSeconds : duration;
+            float cycleScale = settings.overrideHalo ? settings.haloMaxScale : maxScale;
+            float safeDuration = cycleSeconds > 0.01f ? cycleSeconds : 0.01f;
 
             while (timer < safeDuration && isPulsing)
             {
                 timer += Time.deltaTime;
-                float t = timer / safeDuration;
+                float t = Mathf.Clamp01(timer / safeDuration);
 
-                float scale = Mathf.Lerp(1f, maxScale, t);
+                // Ease out: the ring opens quickly, then settles and fades,
+                // instead of travelling at a constant, mechanical speed.
+                float remaining = 1f - t;
+                float scale = Mathf.Lerp(1f, cycleScale, 1f - remaining * remaining);
                 ring.localScale = new Vector3(scale, scale, 1f);
-                SetRendererAlpha(Mathf.Lerp(1f, 0f, t));
+                SetRendererAlpha(remaining * remaining);
                 yield return null;
             }
 
@@ -103,6 +134,13 @@ public class PulseEffect : MonoBehaviour
     {
         if (ringRenderer == null)
             return;
+
+        // A soft halo rather than a solid disc; the crisp cue is the ground wave.
+        alpha *= TriffidVisualSettings.Current.pulseHaloAlpha;
+
+        // OnDisable can run on an object whose Awake never did (destroyed while inactive).
+        if (mpb == null)
+            mpb = new MaterialPropertyBlock();
 
         ringRenderer.GetPropertyBlock(mpb);
         Color c = ringRenderer.color;

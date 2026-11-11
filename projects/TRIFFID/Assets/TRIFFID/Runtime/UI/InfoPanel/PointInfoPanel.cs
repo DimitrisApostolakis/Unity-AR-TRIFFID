@@ -115,6 +115,11 @@ public class PointInfoPanel : MonoBehaviour
 
     private event System.Action<int> markerRemovedEvent;
 
+    // Presentation hook: raised after every refresh with the marker now shown,
+    // or null when the panel is empty. Listeners must not change panel state.
+    public event System.Action<PointData> MarkerPresented;
+    public PointData PresentedMarker => observedMarker;
+
     public void ShowAnnotationError(string message)
     {
         gameObject.SetActive(true);
@@ -125,7 +130,7 @@ public class PointInfoPanel : MonoBehaviour
     {
         persistenceService = persistenceProvider as IAnnotationPersistenceService;
         if (persistenceProvider != null && persistenceService == null)
-            Debug.LogWarning("[PointInfoPanel] Persistence provider does not implement IAnnotationPersistenceService.");
+            TriffidLog.Warning("PointInfoPanel", "Persistence provider does not implement IAnnotationPersistenceService.");
 
         ValidateConfiguration();
         markerRemovedEvent += HandleMarkerRemovedEvent;
@@ -136,32 +141,32 @@ public class PointInfoPanel : MonoBehaviour
         if (classText == null || idValueText == null || latValueText == null ||
             longValueText == null || altitudeValueText == null)
         {
-            Debug.LogWarning("[PointInfoPanel] One or more primary marker text references are missing; some marker details will not be visible.", this);
+            TriffidLog.Warning("PointInfoPanel", "One or more primary marker text references are missing; some marker details will not be visible.", this);
         }
 
         if (displayImage == null)
-            Debug.LogWarning("[PointInfoPanel] Marker icon image is missing; category icons will not be visible.", this);
+            TriffidLog.Warning("PointInfoPanel", "Marker icon image is missing; category icons will not be visible.", this);
 
         if (spritesList == null)
-            Debug.LogWarning("[PointInfoPanel] Category sprite list is missing; class-specific icon lookup is unavailable.", this);
+            TriffidLog.Warning("PointInfoPanel", "Category sprite list is missing; class-specific icon lookup is unavailable.", this);
 
         if (confidenceSlider == null)
-            Debug.LogWarning("[PointInfoPanel] Confidence slider is missing; confidence animation will not be visible.", this);
+            TriffidLog.Warning("PointInfoPanel", "Confidence slider is missing; confidence animation will not be visible.", this);
 
         if (canvasGroup == null)
-            Debug.LogWarning("[PointInfoPanel] CanvasGroup is missing; panel fade transitions are unavailable.", this);
+            TriffidLog.Warning("PointInfoPanel", "CanvasGroup is missing; panel fade transitions are unavailable.", this);
 
         if (deleteButton == null)
         {
-            Debug.LogWarning("[PointInfoPanel] Delete button is missing; panel deletion controls are unavailable.", this);
+            TriffidLog.Warning("PointInfoPanel", "Delete button is missing; panel deletion controls are unavailable.", this);
         }
         else if (deleteButton.buttonText == null)
         {
-            Debug.LogWarning("[PointInfoPanel] Delete button text is missing; confirmation state will not be visible.", this);
+            TriffidLog.Warning("PointInfoPanel", "Delete button text is missing; confirmation state will not be visible.", this);
         }
 
         if (!IsFinite(fadeDuration) || fadeDuration < 0f)
-            Debug.LogWarning("[PointInfoPanel] fadeDuration must be finite and non-negative.", this);
+            TriffidLog.Warning("PointInfoPanel", "fadeDuration must be finite and non-negative.", this);
     }
 
     private static bool IsFinite(float value)
@@ -222,7 +227,7 @@ public class PointInfoPanel : MonoBehaviour
         markerEntries[id] = new MarkerEntry { id = id, data = data, pulse = pulse };
         markerOrder.Add(id);
         RegisterLifecycleRelay(data, id);
-        Debug.Log($"[Panel] Registered: {data.pointClass} / {data.pointID} - Total: {markerOrder.Count}");
+        TriffidLog.Verbose("PointInfoPanel", $"Registered marker {data.pointClass} / {data.pointID} ({markerOrder.Count} total).");
 
         if (wasEmpty && !markerRefreshInProgress && !hasPresentedMarker)
         {
@@ -311,7 +316,7 @@ public class PointInfoPanel : MonoBehaviour
 
         if (markerOrder.Count == 0)
         {
-            Debug.LogWarning("[Panel] ShowFirst called but markers list is empty!");
+            TriffidLog.Warning("PointInfoPanel", "Cannot show the first marker: no markers are registered.");
             return;
         }
         currentIndex = 0;
@@ -418,7 +423,7 @@ public class PointInfoPanel : MonoBehaviour
         {
             if (!deleteFallbackWarningLogged)
             {
-                Debug.LogWarning("[PointInfoPanel] Delete is using runtime-only fallback because no persistence service is available.", this);
+                TriffidLog.Warning("PointInfoPanel", "Delete is using runtime-only fallback because no persistence service is available.", this);
                 deleteFallbackWarningLogged = true;
             }
 
@@ -461,7 +466,7 @@ public class PointInfoPanel : MonoBehaviour
         int idx = markerOrder.IndexOf(markerId);
         if (idx < 0 || !markerEntries.ContainsKey(markerId))
         {
-            Debug.LogWarning($"[Panel] OnMarkerSelected: {data.pointClass} not found!");
+            TriffidLog.Warning("PointInfoPanel", $"Selected marker {data.pointClass} / {data.pointID} is not registered with the panel.");
             return;
         }
 
@@ -496,6 +501,7 @@ public class PointInfoPanel : MonoBehaviour
                 displayImage.sprite = null;
                 displayImage.enabled = false;
             }
+            MarkerPresented?.Invoke(null);
             return;
         }
 
@@ -516,7 +522,7 @@ public class PointInfoPanel : MonoBehaviour
         hasPresentedMarker = true;
         BindObservedMarker(p);
 
-        Debug.Log($"[Panel] RefreshPanel -> {p.pointClass} / {p.pointID} (index {currentIndex}/{markerOrder.Count})");
+        TriffidLog.Verbose("PointInfoPanel", $"Showing marker {p.pointClass} / {p.pointID} ({currentIndex + 1} of {markerOrder.Count}).");
 
         if (classText         != null) classText.text         = GetDisplayClassName(p);
         if (idValueText       != null) idValueText.text       = GetDisplayId(p);
@@ -528,11 +534,12 @@ public class PointInfoPanel : MonoBehaviour
                 : "-";
         }
         if (sourceText != null) sourceText.text = IsProtectedLatestMqttMarker(p) ? string.Empty : p.source;
-        if (latValueText      != null) latValueText.text      = $"{Mathf.Abs((float)p.latitude):F4}° {(p.latitude  >= 0 ? "N" : "S")}";
-        if (longValueText     != null) longValueText.text     = $"{Mathf.Abs((float)p.longitude):F4}° {(p.longitude >= 0 ? "E" : "W")}";
+        // Five decimals resolve about one metre; four only resolved about eleven.
+        if (latValueText      != null) latValueText.text      = FormatDegrees(p.latitude,  "N", "S");
+        if (longValueText     != null) longValueText.text     = FormatDegrees(p.longitude, "E", "W");
 
         float conf01 = Mathf.Clamp01(p.confidence);
-        if (percentageText != null) percentageText.text = $"{conf01 * 100:F0}%";
+        if (percentageText != null) percentageText.text = $"<color={GetConfidenceColorHex(conf01)}>{conf01 * 100:F0}%</color>";
         if (confidenceText != null) confidenceText.text = "Confidence";
 
         if (confidenceSlider != null)
@@ -576,6 +583,23 @@ public class PointInfoPanel : MonoBehaviour
         UpdateDeleteButtonForMarker(p);
 
         StartCurrentPulse();
+        MarkerPresented?.Invoke(p);
+    }
+
+    private static string FormatDegrees(double degrees, string positive, string negative)
+    {
+        string magnitude = System.Math.Abs(degrees).ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
+        // The hemisphere letter takes the label colour: the digits are the data.
+        return $"{magnitude}° <color=#7AAABB>{(degrees >= 0 ? positive : negative)}</color>";
+    }
+
+    // Three bands keep the reading glanceable; the number itself stays visible,
+    // so the colour is a redundant cue rather than the only one.
+    private static string GetConfidenceColorHex(float confidence01)
+    {
+        if (confidence01 >= 0.75f) return "#4ADE80";
+        if (confidence01 >= 0.4f) return "#FFC53D";
+        return "#FF6B5E";
     }
 
     private void StopCurrentPulse()
@@ -786,7 +810,7 @@ public class PointInfoPanel : MonoBehaviour
         }
 
         bool isUgv = IsProtectedLatestMqttMarker(marker);
-        string titleText = isUgv ? "BEHAVIOR" : "id";
+        string titleText = isUgv ? "BEHAVIOR" : "ID";
         string valueText = isUgv
             ? (string.IsNullOrWhiteSpace(marker.behavior) ? ProtectedLatestMqttBehaviorFallback : marker.behavior)
             : GetDisplayId(marker);
@@ -852,6 +876,9 @@ public class PointInfoPanel : MonoBehaviour
         if (pointClass.StartsWith("Drawing", System.StringComparison.OrdinalIgnoreCase))
             return true;
 
+        if (MissionPaths.IsMissionPath(pointClass))
+            return true;
+
         if (string.Equals(category, "Annotation", System.StringComparison.OrdinalIgnoreCase))
             return true;
 
@@ -862,6 +889,16 @@ public class PointInfoPanel : MonoBehaviour
     {
         if (p == null)
             return "-";
+
+        if (MissionPaths.TryGetDisplayName(p.pointClass, out string routeName))
+            return routeName;
+
+        // Drawn polygons are classed "safe" or "unsafe"; the title colour still comes from InfoPanelStyle.
+        string polygonClass = p.pointClass?.Trim();
+        if (string.Equals(polygonClass, "safe", System.StringComparison.OrdinalIgnoreCase))
+            return "SAFE ZONE";
+        if (string.Equals(polygonClass, "unsafe", System.StringComparison.OrdinalIgnoreCase))
+            return "UNSAFE ZONE";
 
         if (IsLineMarker(p) && !string.IsNullOrWhiteSpace(p.lineColorHex) && ColorUtility.TryParseHtmlString(p.lineColorHex, out Color lineColor))
             return $"Line {GetNearestNamedColor(lineColor)}";

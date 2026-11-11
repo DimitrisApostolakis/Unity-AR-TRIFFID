@@ -53,6 +53,7 @@ public class MeshPathJsonLoader : MonoBehaviour
     [SerializeField] private bool logDetails = true;
     [SerializeField, HideInInspector] private string lastResolvedJsonPath;
     [SerializeField, HideInInspector] private string lastResolvedMeshPath;
+    private const string LogSource = "MeshPathJsonLoader";
     [SerializeField, HideInInspector] private string lastStatus;
 
     [Header("Runtime Mesh Diagnostics")]
@@ -102,7 +103,7 @@ public class MeshPathJsonLoader : MonoBehaviour
             "Resolved Mesh Path: " + DisplayPath(lastResolvedMeshPath);
 
         if (logDetails)
-            Debug.Log(lastStatus, this);
+            TriffidLog.Info(LogSource, lastStatus, this);
     }
 
     [ContextMenu("Load And Apply Mesh")]
@@ -114,7 +115,7 @@ public class MeshPathJsonLoader : MonoBehaviour
 
     private void LoadConfiguredMesh(bool forceReload)
     {
-        UnityEngine.Profiling.Profiler.BeginSample("AR2.Mesh.EnsureLoaded");
+        UnityEngine.Profiling.Profiler.BeginSample("TRIFFID.Mesh.EnsureLoaded");
         try { LoadConfiguredMeshCore(forceReload); }
         finally { UnityEngine.Profiling.Profiler.EndSample(); }
     }
@@ -195,7 +196,7 @@ public class MeshPathJsonLoader : MonoBehaviour
             "Triangles: " + CountTriangles(mesh);
 
         if (logDetails)
-            Debug.Log(lastStatus, this);
+            TriffidLog.Info(LogSource, lastStatus, this);
     }
 
     private static long CountTriangles(Mesh mesh)
@@ -235,10 +236,12 @@ public class MeshPathJsonLoader : MonoBehaviour
     public void PrintLastStatus()
     {
         string status = string.IsNullOrEmpty(lastStatus) ? "No status has been recorded yet." : lastStatus;
-        Debug.Log(
-            status + "\n" +
-            "Resolved JSON Path: " + DisplayPath(lastResolvedJsonPath) + "\n" +
-            "Resolved Mesh Path: " + DisplayPath(lastResolvedMeshPath),
+        TriffidLog.Info(
+            LogSource,
+            status +
+            TriffidLog.Fields(
+                ("Resolved JSON path", DisplayPath(lastResolvedJsonPath)),
+                ("Resolved mesh path", DisplayPath(lastResolvedMeshPath))),
             this);
     }
 
@@ -628,7 +631,7 @@ public class MeshPathJsonLoader : MonoBehaviour
     private bool Fail(string message)
     {
         lastStatus = "Error: " + message;
-        Debug.LogError(lastStatus, this);
+        TriffidLog.Error(LogSource, message, this);
         return false;
     }
 

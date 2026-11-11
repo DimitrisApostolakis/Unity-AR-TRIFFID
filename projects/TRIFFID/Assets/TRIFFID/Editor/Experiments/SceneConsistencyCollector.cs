@@ -37,7 +37,7 @@ public static class SceneConsistencyCollector
             string directory = EditorUtility.OpenFolderPanel("Select PreparedSceneInputs (contains prepared_scene.json)", "", "");
             if (string.IsNullOrEmpty(directory)) return;
             string capture = Run(directory, source, cycles);
-            Debug.Log("[SceneConsistency] Capture complete. Play mode remains paused. Results: " + capture +
+            TriffidLog.Info("SceneConsistency", "Capture complete. Play mode remains paused. Results: " + capture +
                 "\nAnalyze: python LocalScripts/run_scene_consistency.py --analyze-run \"" + capture + "\"");
             EditorUtility.RevealInFinder(capture);
         }

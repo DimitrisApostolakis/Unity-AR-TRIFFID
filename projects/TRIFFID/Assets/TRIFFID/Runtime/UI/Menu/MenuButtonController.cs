@@ -191,9 +191,18 @@ public class MenuButtonController : MonoBehaviour
         onLoadPressed?.Invoke();
     }
 
+    // Annotations stay grabbable for the whole of Walk mode, not only while
+    // Info or Draw is open on top of it.
+    private void SetAnnotationColliders(bool enabled)
+    {
+        if (jsonSpawner != null)
+            jsonSpawner.SetAllColliders(enabled);
+    }
+
     public void OnWalkToggled()
     {
         walkModeActive = true;
+        SetAnnotationColliders(true);
 
         if (scaleChanger != null)
             scaleChanger.ApplyNewScale();
@@ -233,8 +242,7 @@ public class MenuButtonController : MonoBehaviour
 
     public void OnInfoUntoggled()
     {
-        if (jsonSpawner != null)
-            jsonSpawner.SetAllColliders(false);
+        SetAnnotationColliders(walkModeActive);
 
         if (currentState == MenuState.Info)
             TransitionToState(walkModeActive ? MenuState.Walk : MenuState.Loading);
@@ -307,8 +315,7 @@ public class MenuButtonController : MonoBehaviour
 
             RequestMapSync();
 
-            if (jsonSpawner != null)
-                jsonSpawner.SetAllColliders(false);
+            SetAnnotationColliders(walkModeActive);
 
             if (xrControllerLogger != null)
                 xrControllerLogger.ToggleAnnotationMode();
@@ -334,6 +341,7 @@ public class MenuButtonController : MonoBehaviour
         }
 
         walkModeActive = false;
+        SetAnnotationColliders(false);
 
         if (currentState == MenuState.Walk)
             TransitionToState(MenuState.Loading);
@@ -691,76 +699,76 @@ public class MenuButtonController : MonoBehaviour
     private void ValidateDependencies()
     {
         if (loadButton == null)
-            Debug.LogError("[MenuButtonController] Load button is missing; load flow cannot be started.", this);
+            TriffidLog.Error("MenuButtonController", "Load button is missing; load flow cannot be started.", this);
 
         if (walkButton == null)
-            Debug.LogWarning("[MenuButtonController] Walk mode button is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Walk mode button is not assigned.", this);
 
         if (infoButton == null)
-            Debug.LogWarning("[MenuButtonController] Info mode button is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Info mode button is not assigned.", this);
 
         if (drawButton == null)
-            Debug.LogWarning("[MenuButtonController] Draw mode button is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Draw mode button is not assigned.", this);
 
         if (lockButton == null)
-            Debug.LogWarning("[MenuButtonController] Lock mode button is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Lock mode button is not assigned.", this);
 
         if (resetButton == null)
-            Debug.LogWarning("[MenuButtonController] Reset button is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Reset button is not assigned.", this);
 
         if (locomotionComponent == null)
-            Debug.LogWarning("[MenuButtonController] FreeLocomotion is not assigned; Walk-mode locomotion control is unavailable.", this);
+            TriffidLog.Warning("MenuButtonController", "FreeLocomotion is not assigned; Walk-mode locomotion control is unavailable.", this);
 
         if (xrControllerLogger == null)
-            Debug.LogWarning("[MenuButtonController] XRControllerLogger is not assigned; menu recenter and Draw-mode integration are unavailable.", this);
+            TriffidLog.Warning("MenuButtonController", "XRControllerLogger is not assigned; menu recenter and Draw-mode integration are unavailable.", this);
 
         if (inputBridge == null)
-            Debug.LogWarning("[MenuButtonController] XRControllerInputBridge is not assigned; controller shortcuts are unavailable.", this);
+            TriffidLog.Warning("MenuButtonController", "XRControllerInputBridge is not assigned; controller shortcuts are unavailable.", this);
 
         if (jsonSpawner == null)
-            Debug.LogWarning("[MenuButtonController] JsonSpawner is not assigned; marker collider mode changes are unavailable.", this);
+            TriffidLog.Warning("MenuButtonController", "JsonSpawner is not assigned; marker collider mode changes are unavailable.", this);
 
         if (colliderToToggleOnLock == null)
-            Debug.LogWarning("[MenuButtonController] Lock collider is not assigned; lock-state collider control is unavailable.", this);
+            TriffidLog.Warning("MenuButtonController", "Lock collider is not assigned; lock-state collider control is unavailable.", this);
 
         if (mapCollider == null)
-            Debug.LogWarning("[MenuButtonController] Map collider is not assigned; Walk-mode map collider control is unavailable.", this);
+            TriffidLog.Warning("MenuButtonController", "Map collider is not assigned; Walk-mode map collider control is unavailable.", this);
 
         if (drawMenu == null)
-            Debug.LogWarning("[MenuButtonController] Draw menu is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Draw menu is not assigned.", this);
 
         if (menuOrigin == null)
-            Debug.LogWarning("[MenuButtonController] Menu origin is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Menu origin is not assigned.", this);
 
         if (closeButton == null)
-            Debug.LogWarning("[MenuButtonController] Close button is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Close button is not assigned.", this);
 
         if (manipulationBar == null)
-            Debug.LogWarning("[MenuButtonController] Manipulation bar is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Manipulation bar is not assigned.", this);
 
         if (mapGhost == null)
-            Debug.LogWarning("[MenuButtonController] Map ghost is not assigned; optional Draw-mode ghost visuals are unavailable.", this);
+            TriffidLog.Warning("MenuButtonController", "Map ghost is not assigned; optional Draw-mode ghost visuals are unavailable.", this);
 
         if (spawnMenu == null)
-            Debug.LogWarning("[MenuButtonController] Spawn menu is not assigned; optional spawn-menu coordination is unavailable.", this);
+            TriffidLog.Warning("MenuButtonController", "Spawn menu is not assigned; optional spawn-menu coordination is unavailable.", this);
 
         if (mapColliderSync == null)
         {
-            Debug.LogWarning("[MenuButtonController] Map collider sync component is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Map collider sync component is not assigned.", this);
         }
         else if (mapColliderSync.GetType().GetMethod("SyncToMap", System.Type.EmptyTypes) == null)
         {
-            Debug.LogWarning("[MenuButtonController] Map collider sync component does not expose SyncToMap.", this);
+            TriffidLog.Warning("MenuButtonController", "Map collider sync component does not expose SyncToMap.", this);
         }
 
         if (mapOriginBoundsCollider == null)
-            Debug.LogWarning("[MenuButtonController] Map-origin bounds collider is not assigned.", this);
+            TriffidLog.Warning("MenuButtonController", "Map-origin bounds collider is not assigned.", this);
 
         if (scaleChanger == null)
-            Debug.LogWarning("[MenuButtonController] ScaleChanger is not assigned; optional Walk-mode scale changes are unavailable.", this);
+            TriffidLog.Warning("MenuButtonController", "ScaleChanger is not assigned; optional Walk-mode scale changes are unavailable.", this);
 
         if (cameraBackgroundToggle == null)
-            Debug.LogWarning("[MenuButtonController] CameraBackgroundToggle is not assigned; optional Walk-mode background changes are unavailable.", this);
+            TriffidLog.Warning("MenuButtonController", "CameraBackgroundToggle is not assigned; optional Walk-mode background changes are unavailable.", this);
     }
 
     private void OnMenuRecenterRequested()

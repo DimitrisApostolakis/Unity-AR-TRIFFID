@@ -60,6 +60,9 @@ public partial class JsonSpawner
         // Preview values never enter feature data. Sample the release position
         // once here and commit only mappings belonging to this edited vertex.
         data.SetElevationUnresolved(false);
+        // Dropped under the map surface: bring it back up onto the surface.
+        Vector3 released = node.position;
+        if (TryKeepAboveSurface(ref released)) node.position = released;
         FloatingIcon icon = node.GetComponent<FloatingIcon>();
         if (icon != null) icon.localMapPoint = map.InverseTransformPoint(node.position);
         RefreshLiveHeightAboveSurface(data, node);

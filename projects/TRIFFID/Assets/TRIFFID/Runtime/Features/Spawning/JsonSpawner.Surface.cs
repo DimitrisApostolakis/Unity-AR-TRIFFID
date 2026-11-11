@@ -28,6 +28,13 @@ public partial class JsonSpawner
                 transformData.colmap_to_enu.scale, out up, out units);
     }
 
+    // Geographic Up in world space and world units per ENU metre for the map
+    // parent used by spawned markers. Read-only; performs no surface query.
+    public bool TryGetMapVertical(out Vector3 worldUp, out float worldUnitsPerMetre)
+    {
+        return TryGetSurfaceQueryScale(mapTransform != null ? mapTransform : transform, out worldUp, out worldUnitsPerMetre);
+    }
+
     private bool TrySnapToSurface(Vector3 approximateWorldPos, Transform parentRef, out Vector3 snappedWorldPos)
     {
         snappedWorldPos = approximateWorldPos;
@@ -187,6 +194,47 @@ public partial class JsonSpawner
             Collider target = surfaceSnapTargetObject == null ? null : ResolveSurfaceQueryCollider();
             if (surfaceSnapTargetObject != null && target == null) return false;
             return GeographicSurfaceQuery.TryRaycast(target, ray, distance, mask, out hit);
+        }
+        finally
+        {
+            if (activated && restoreSurfaceActiveStateAfterSnap && surfaceSnapTargetObject != null)
+                surfaceSnapTargetObject.SetActive(false);
+        }
+    }
+
+    // Keeps a user-placed position from ending up under the map surface.
+    // The reference is the same one the height read-out uses: the highest
+    // surface on the geographic vertical through the point. A point below it
+    // is moved straight up onto it (plus the configured snap lift, or
+    // minimumLiftWorld if that is larger). Returns true when the point moved.
+    // With no surface on that vertical the point is left alone.
+    public bool TryKeepAboveSurface(ref Vector3 worldPosition, float minimumLiftWorld = 0f)
+    {
+        Transform parentRef = mapTransform != null ? mapTransform : transform;
+        Vector3 axis;
+        float units;
+        if (!TryGetSurfaceQueryScale(parentRef, out axis, out units)) return false;
+        bool activated = false;
+        PrepareSurfaceForSnap(ref activated);
+        try
+        {
+            // Start far above anything the map contains so the first hit is
+            // the topmost surface, never a layer underneath it.
+            Vector3 surface;
+            float start = Mathf.Max(surfaceSnapRayStartOffset * 8f, 1000f) * units;
+            float distance = Mathf.Max(surfaceSnapRayDistance * 16f, 4000f) * units;
+            Collider target = surfaceSnapTargetObject == null ? null : ResolveSurfaceQueryCollider();
+            if (surfaceSnapTargetObject != null && target == null) return false;
+            if (!GeographicSurfaceQuery.TryHitFromAbove(target, worldPosition, axis, start, distance, surfaceSnapMask, out surface))
+                return false;
+
+            float below = Vector3.Dot(surface - worldPosition, axis);
+            const float toleranceMetres = 0.01f;
+            if (below <= toleranceMetres * units) return false;
+
+            float lift = Mathf.Max(Mathf.Max(0f, surfaceSnapOffset + surfaceSnapLift) * units, minimumLiftWorld);
+            worldPosition += axis * (below + lift);
+            return true;
         }
         finally
         {

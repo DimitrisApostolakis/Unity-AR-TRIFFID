@@ -45,13 +45,13 @@ public static class SyncMatrixBridge
             SessionState.SetString(Key+".source", source.gameObject.name);
             SessionState.SetInt(Key+".seq", 0);
             SessionState.EraseString(Key+".pending");
-            Debug.Log("[SyncMatrix] Attached. Follow Python; leave Play unpaused and do not edit. Play may restart automatically.");
+            TriffidLog.Info("SyncMatrix", "Attached. Follow Python; leave Play unpaused and do not edit. Play may restart automatically.");
         }
         catch (Exception e) { Debug.LogException(e); }
     }
 
     [MenuItem("Tools/Experiments/Synchronization/Detach Automated Matrix")]
-    static void Detach() { SessionState.EraseString(Key); Debug.Log("[SyncMatrix] Detached."); }
+    static void Detach() { SessionState.EraseString(Key); TriffidLog.Info("SyncMatrix", "Detached."); }
 
     static object Get(object obj,string name)
     {

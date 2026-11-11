@@ -117,7 +117,7 @@ public class JsonSpawnerPersistenceAdapter : MonoBehaviour, IAnnotationPersisten
         if (missingSpawnerWarningLogged)
             return;
 
-        Debug.LogWarning($"[JsonSpawnerPersistenceAdapter] {operation} cannot run because JsonSpawner is unavailable.", this);
+        TriffidLog.Warning("JsonSpawnerPersistenceAdapter", $"{operation} cannot run because JsonSpawner is unavailable.", this);
         missingSpawnerWarningLogged = true;
     }
 }

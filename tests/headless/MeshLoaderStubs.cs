@@ -45,6 +45,7 @@ namespace UnityEngine
     {
         public static readonly List<string> errors=new List<string>();
         public static void Log(object v,Object context) { }
+        public static void LogWarning(object v,Object context) { }
         public static void LogError(object v,Object context) { errors.Add(v.ToString()); }
     }
     public sealed class Header:Attribute { public Header(string v){} }

@@ -9,7 +9,7 @@ public class CameraBackgroundToggle : MonoBehaviour
         if (mainCamera == null) mainCamera = Camera.main;
 
         if (mainCamera == null)
-            Debug.LogWarning("[CameraBackgroundToggle] No camera is assigned and Camera.main was not found.", this);
+            TriffidLog.Warning("CameraBackgroundToggle", "No camera is assigned and Camera.main was not found.", this);
 
         if (mainCamera != null)
         {

@@ -23,7 +23,7 @@ public partial class JsonSpawner
         {
             if (!transformLoadWarningShown)
             {
-                Debug.LogWarning("[JsonSpawner] ColmapToWgs84: transformData not loaded yet.");
+                TriffidLog.Warning("JsonSpawner", "Cannot convert COLMAP to WGS84: the transform config has not been loaded yet.");
                 transformLoadWarningShown = true;
             }
             return new Vector3Double();
@@ -52,7 +52,7 @@ public partial class JsonSpawner
             if (!TryValidateTransformConfig(loadedTransform, out string transformError))
             {
                 if (!transformLoadWarningShown)
-                    Debug.LogError($"[JsonSpawner] Invalid transform config: {transformError}", this);
+                    TriffidLog.Error("JsonSpawner", $"Invalid transform config: {transformError}", this);
 
                 transformLoadWarningShown = true;
                 return;
@@ -65,7 +65,7 @@ public partial class JsonSpawner
         {
             if (!transformLoadWarningShown)
             {
-                Debug.LogWarning($"[JsonSpawner] Failed loading transform config: {ex.Message}");
+                TriffidLog.Warning("JsonSpawner", $"Could not load the transform config: {ex.Message}");
                 transformLoadWarningShown = true;
             }
         }
@@ -91,7 +91,7 @@ public partial class JsonSpawner
                     out string resolvedPath,
                     out string error))
             {
-                Debug.LogError("[JsonSpawner] Failed to resolve shared transform path: " + error, this);
+                TriffidLog.Error("JsonSpawner", "Failed to resolve shared transform path: " + error, this);
                 return string.Empty;
             }
 
@@ -108,21 +108,20 @@ public partial class JsonSpawner
 
         if (string.IsNullOrWhiteSpace(resolvedTransformPath))
         {
-            Debug.LogError("[JsonSpawner] Resolved transform path is empty.", this);
+            TriffidLog.Error("JsonSpawner", "Resolved transform path is empty.", this);
             return;
         }
 
         bool exists = File.Exists(resolvedTransformPath);
 
-        Debug.Log(
-            "[JsonSpawner] Shared Transform Path Validation\n" +
-            $"Use Shared Transform Path Json: {useSharedTransformPathJson}\n" +
-            $"Shared Config File: {sharedTransformPathsJsonFile}\n" +
-            $"Transform Path Json Key: {transformPathJsonKey}\n" +
-            $"Resolved Transform Path: {resolvedTransformPath}\n" +
-            $"Transform File Exists: {exists}",
-            this
-        );
+        string report = TriffidLog.Fields(
+            ("Use shared path JSON", useSharedTransformPathJson),
+            ("Shared config file", sharedTransformPathsJsonFile),
+            ("Path key", transformPathJsonKey),
+            ("Resolved path", resolvedTransformPath),
+            ("File exists", exists));
+        if (exists) TriffidLog.Info("JsonSpawner", "Shared transform path is valid." + report, this);
+        else TriffidLog.Warning("JsonSpawner", "Shared transform path resolved, but the file does not exist." + report, this);
     }
 
     private static string ResolveJsonPathForRuntime(string rawPath)
@@ -170,13 +169,13 @@ public partial class JsonSpawner
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            Debug.LogError("[JsonSpawner] GeoJSON save path is empty.");
+            TriffidLog.Error("JsonSpawner", "GeoJSON save path is empty.");
             return;
         }
 
         if (Directory.Exists(path))
         {
-            Debug.LogError($"[JsonSpawner] GeoJSON save path points to a directory: {path}");
+            TriffidLog.Error("JsonSpawner", $"GeoJSON save path points to a directory: {path}");
             return;
         }
 
@@ -187,13 +186,13 @@ public partial class JsonSpawner
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            Debug.LogError("[JsonSpawner] GeoJSON input path is empty.");
+            TriffidLog.Error("JsonSpawner", "GeoJSON input path is empty.");
             return false;
         }
 
         if (Directory.Exists(path))
         {
-            Debug.LogError($"[JsonSpawner] GeoJSON input path points to a directory: {path}");
+            TriffidLog.Error("JsonSpawner", $"GeoJSON input path points to a directory: {path}");
             return false;
         }
 
@@ -202,7 +201,7 @@ public partial class JsonSpawner
 
         if (!File.Exists(path))
         {
-            Debug.LogError($"[JsonSpawner] File not found: {path}");
+            TriffidLog.Error("JsonSpawner", $"File not found: {path}");
             return false;
         }
 
@@ -214,14 +213,14 @@ public partial class JsonSpawner
         if (string.IsNullOrWhiteSpace(path))
         {
             if (logErrors)
-                Debug.LogError("[JsonSpawner] Transform config path is empty.");
+                TriffidLog.Error("JsonSpawner", "Transform config path is empty.");
             return false;
         }
 
         if (Directory.Exists(path))
         {
             if (logErrors)
-                Debug.LogError($"[JsonSpawner] Transform config path points to a directory: {path}");
+                TriffidLog.Error("JsonSpawner", $"Transform config path points to a directory: {path}");
             return false;
         }
 
@@ -229,14 +228,14 @@ public partial class JsonSpawner
         if (!string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase))
         {
             if (logErrors)
-                Debug.LogError($"[JsonSpawner] Invalid transform config file type. Expected .json, got {FormatExtension(extension)}: {path}");
+                TriffidLog.Error("JsonSpawner", $"Invalid transform config file type. Expected .json, got {FormatExtension(extension)}: {path}");
             return false;
         }
 
         if (!File.Exists(path))
         {
             if (logErrors)
-                Debug.LogError($"[JsonSpawner] File not found: {path}");
+                TriffidLog.Error("JsonSpawner", $"File not found: {path}");
             return false;
         }
 
@@ -249,7 +248,7 @@ public partial class JsonSpawner
         bool valid = string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase) ||
                      string.Equals(extension, ".geojson", StringComparison.OrdinalIgnoreCase);
         if (!valid && logErrors)
-            Debug.LogError($"[JsonSpawner] Invalid {description} file type. Expected .json or .geojson, got {FormatExtension(extension)}: {path}");
+            TriffidLog.Error("JsonSpawner", $"Invalid {description} file type. Expected .json or .geojson, got {FormatExtension(extension)}: {path}");
 
         return valid;
     }

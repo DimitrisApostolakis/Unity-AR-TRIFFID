@@ -149,13 +149,13 @@ public class GeoJsonApiManager : MonoBehaviour
         if (!string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase))
         {
             string displayedExtension = string.IsNullOrEmpty(extension) ? "<none>" : extension;
-            Debug.LogWarning($"[GeoJsonApiManager] Invalid API config file type. Expected .json, got {displayedExtension}: {configPath}. Using built-in endpoints.", this);
+            TriffidLog.Warning("GeoJsonApiManager", $"Invalid API config file type. Expected .json, got {displayedExtension}: {configPath}. Using built-in endpoints.", this);
             return;
         }
 
         if (!File.Exists(configPath))
         {
-            Debug.LogWarning($"[GeoJsonApiManager] API config file not found: {configPath}. Using built-in endpoints.", this);
+            TriffidLog.Warning("GeoJsonApiManager", $"API config file not found: {configPath}. Using built-in endpoints.", this);
             return;
         }
 
@@ -164,7 +164,7 @@ public class GeoJsonApiManager : MonoBehaviour
             ApiEndpointsConfig loadedConfig = JsonConvert.DeserializeObject<ApiEndpointsConfig>(File.ReadAllText(configPath));
             if (loadedConfig == null)
             {
-                Debug.LogWarning($"[GeoJsonApiManager] API config parsed to null: {configPath}. Using built-in endpoints.", this);
+                TriffidLog.Warning("GeoJsonApiManager", $"API config is empty or invalid: {configPath}. Using built-in endpoints.", this);
                 return;
             }
 
@@ -181,12 +181,12 @@ public class GeoJsonApiManager : MonoBehaviour
             if (verboseLogs)
             {
                 string environmentName = useLocalhost ? "localhost" : "production";
-                Debug.Log($"[GeoJsonApiManager] Loaded API config from {configPath}. Active environment: {environmentName}; features URL: {GetFeaturesUrl()}", this);
+                TriffidLog.Info("GeoJsonApiManager", $"Loaded API config from {configPath}. Active environment: {environmentName}; features URL: {GetFeaturesUrl()}", this);
             }
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[GeoJsonApiManager] Failed to parse API config '{configPath}': {ex.Message}. Using built-in endpoints.", this);
+            TriffidLog.Warning("GeoJsonApiManager", $"Failed to parse API config '{configPath}': {ex.Message}. Using built-in endpoints.", this);
         }
     }
 
@@ -210,7 +210,7 @@ public class GeoJsonApiManager : MonoBehaviour
             return normalizedValue;
 
         string normalizedFallback = NormalizeUrlBase(fallbackValue);
-        Debug.LogWarning($"[GeoJsonApiManager] Invalid {endpointName} in {ApiEndpointsFileName}; using built-in endpoint {normalizedFallback}.", this);
+        TriffidLog.Warning("GeoJsonApiManager", $"Invalid {endpointName} in {ApiEndpointsFileName}; using built-in endpoint {normalizedFallback}.", this);
         return normalizedFallback;
     }
 
@@ -223,7 +223,7 @@ public class GeoJsonApiManager : MonoBehaviour
     private void ValidateConfiguration()
     {
         if (requestTimeoutSeconds <= 0)
-            Debug.LogWarning("[GeoJsonApiManager] requestTimeoutSeconds must be positive.", this);
+            TriffidLog.Warning("GeoJsonApiManager", "requestTimeoutSeconds must be positive.", this);
 
         if (!apiConfigLoaded)
             return;
@@ -263,7 +263,7 @@ public class GeoJsonApiManager : MonoBehaviour
             return true;
 
         string displayedValue = string.IsNullOrWhiteSpace(value) ? "<empty>" : value;
-        Debug.LogError($"[GeoJsonApiManager] Invalid API endpoint URL for {endpointName}: {displayedValue}", this);
+        TriffidLog.Error("GeoJsonApiManager", $"Invalid API endpoint URL for {endpointName}: {displayedValue}", this);
         return false;
     }
 
@@ -278,7 +278,7 @@ public class GeoJsonApiManager : MonoBehaviour
 
         string displayedValue = string.IsNullOrWhiteSpace(url) ? "<empty>" : url;
         error = $"Invalid API endpoint URL for {endpointName}: {displayedValue}. Request was not sent.";
-        Debug.LogError($"[GeoJsonApiManager] {error}", this);
+        TriffidLog.Error("GeoJsonApiManager", error, this);
         return false;
     }
 
@@ -350,7 +350,7 @@ public class GeoJsonApiManager : MonoBehaviour
                     root.features = new System.Collections.Generic.List<Feature>();
 
                 if (droppedMissingClass > 0 && verboseLogs)
-                    Debug.LogWarning($"[GeoJsonApiManager] Dropped {droppedMissingClass} feature(s) with missing required properties.class.");
+                    TriffidLog.Warning("GeoJsonApiManager", $"Dropped {droppedMissingClass} feature(s) with missing required properties.class.");
 
                 callback?.Invoke(true, "OK", root);
             }
@@ -423,7 +423,7 @@ public class GeoJsonApiManager : MonoBehaviour
             {
                 callback?.Invoke(false, BuildError("PUT", collectionUrl, request), null);
                 if (verboseLogs)
-                    Debug.LogWarning(BuildError("PUT", collectionUrl, request));
+                    TriffidLog.Warning("GeoJsonApiManager", BuildError("PUT", collectionUrl, request), this);
                 yield break;
             }
 
@@ -684,6 +684,11 @@ public class GeoJsonApiManager : MonoBehaviour
 
     private static bool IsSuccess(UnityWebRequest request)
     {
+        // Every request is checked here exactly once, so this is where the user
+        // is told that the server stopped or resumed answering. An HTTP error
+        // is still an answer; only a transport failure counts as offline.
+        ServerConnectionNotice.Report(request.result != UnityWebRequest.Result.ConnectionError);
+
         return request.result == UnityWebRequest.Result.Success
                && request.responseCode >= 200
                && request.responseCode < 300;

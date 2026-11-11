@@ -34,7 +34,7 @@ public class ScaleChanger : MonoBehaviour
         {
             if (!missingTargetWarningLogged)
             {
-                Debug.LogWarning("[ScaleChanger] Target transform is missing; scale change cannot be applied.", this);
+                TriffidLog.Warning("ScaleChanger", "Target transform is missing; scale change cannot be applied.", this);
                 missingTargetWarningLogged = true;
             }
         }
@@ -45,7 +45,7 @@ public class ScaleChanger : MonoBehaviour
 
         if (validateConfiguredScale && !IsFinite(targetScale) && !invalidScaleWarningLogged)
         {
-            Debug.LogWarning("[ScaleChanger] Target scale contains a non-finite value.", this);
+            TriffidLog.Warning("ScaleChanger", "Target scale contains a non-finite value.", this);
             invalidScaleWarningLogged = true;
         }
         else if (validateConfiguredScale && IsFinite(targetScale))

@@ -156,9 +156,9 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
     public void RefreshFromServer()
     {
         refreshRequested = true;
-        Debug.Log("[GeoJsonSyncCoordinator] Remote refresh requested.");
+        TriffidLog.Info("GeoJsonSyncCoordinator", "Remote refresh requested.");
         if (!isActiveAndEnabled)
-            Debug.LogWarning("[GeoJsonSyncCoordinator] Refresh cannot run while the component or its GameObject is disabled.");
+            TriffidLog.Warning("GeoJsonSyncCoordinator", "Refresh cannot run while the component or its GameObject is disabled.");
     }
 
     [ContextMenu("Sync/Retry Pending Edits")]
@@ -306,7 +306,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
             if (verboseLogs)
             {
                 previousIds.ExceptWith(local.features.Where(f => f != null).Select(f => f.id));
-                Debug.Log("[GeoJsonSyncCoordinator] Remote refresh applied: server=" + fetch.root.features.Count +
+                TriffidLog.Info("GeoJsonSyncCoordinator", "Remote refresh applied: server=" + fetch.root.features.Count +
                     ", local=" + local.features.Count + ", removed=" + previousIds.Count +
                     ", pending=" + local.syncState.pending.Count + ". Server changes and deletions take priority.");
             }
@@ -503,7 +503,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
         apiManager.PatchCurrentStatusFlags(0, 0, 1, (ok, message, ignored) =>
         { result.ok = ok; result.message = message; result.completed = true; });
         yield return Wait(result, null);
-        if (!result.ok && verboseLogs) Debug.LogWarning("[GeoJsonSyncCoordinator] Feature delivered, observer-status notification failed: " + result.message);
+        if (!result.ok && verboseLogs) TriffidLog.Warning("GeoJsonSyncCoordinator", "Feature delivered, observer-status notification failed: " + result.message);
     }
 
     private IEnumerator NotifyServerOfRemoteRefresh()
@@ -512,7 +512,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
         apiManager.PatchCurrentStatusField(remoteRefreshStatusField, remoteRefreshStatusValue, (ok, message, ignored) =>
         { result.ok = ok; result.message = message; result.completed = true; });
         yield return Wait(result, null);
-        if (!result.ok && verboseLogs) Debug.LogWarning("[GeoJsonSyncCoordinator] Remote state applied, status notification failed: " + result.message);
+        if (!result.ok && verboseLogs) TriffidLog.Warning("GeoJsonSyncCoordinator", "Remote state applied, status notification failed: " + result.message);
     }
 
     private static void RemoveIdenticalDuplicates(Root root)
@@ -577,7 +577,7 @@ public class GeoJsonSyncCoordinator : MonoBehaviour
     {
         if (LastStatus == status) return;
         LastStatus = status;
-        if (verboseLogs) Debug.Log("[GeoJsonSyncCoordinator] " + status);
+        if (verboseLogs) TriffidLog.Info("GeoJsonSyncCoordinator", "Sync status: " + status);
         OnSyncStatus?.Invoke(status);
     }
 }

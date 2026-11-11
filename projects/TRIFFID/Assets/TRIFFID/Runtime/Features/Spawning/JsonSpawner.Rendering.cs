@@ -85,14 +85,14 @@ public partial class JsonSpawner
             loadedTransform = JsonConvert.DeserializeObject<TransformConfig>(File.ReadAllText(resolvedTransformPath));
             if (!TryValidateTransformConfig(loadedTransform, out string transformError))
             {
-                Debug.LogError($"[JsonSpawner] Invalid transform config: {transformError}", this);
+                TriffidLog.Error("JsonSpawner", $"Invalid transform config: {transformError}", this);
                 loadedTransform = null;
                 return false;
             }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[JsonSpawner] Failed to parse transform config '{resolvedTransformPath}': {ex.Message}", this);
+            TriffidLog.Error("JsonSpawner", $"Failed to parse transform config '{resolvedTransformPath}': {ex.Message}", this);
             loadedTransform = null;
             return false;
         }
@@ -111,7 +111,7 @@ public partial class JsonSpawner
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[JsonSpawner] Failed to resolve GeoJSON snapshot path: {ex.Message}", this);
+            TriffidLog.Error("JsonSpawner", $"Failed to resolve GeoJSON snapshot path: {ex.Message}", this);
             return false;
         }
 
@@ -126,20 +126,20 @@ public partial class JsonSpawner
             loadedRoot = JsonConvert.DeserializeObject<Root>(File.ReadAllText(loadPath));
             if (loadedRoot == null)
             {
-                Debug.LogError("[JsonSpawner] Invalid GeoJSON root: document is null.", this);
+                TriffidLog.Error("JsonSpawner", "Invalid GeoJSON root: document is null.", this);
                 return false;
             }
 
             if (loadedRoot.features == null)
             {
-                Debug.LogError("[JsonSpawner] Invalid GeoJSON root: features collection is missing.", this);
+                TriffidLog.Error("JsonSpawner", "Invalid GeoJSON root: features collection is missing.", this);
                 loadedRoot = null;
                 return false;
             }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[JsonSpawner] Failed to parse GeoJSON file '{loadPath}': {ex.Message}", this);
+            TriffidLog.Error("JsonSpawner", $"Failed to parse GeoJSON file '{loadPath}': {ex.Message}", this);
             loadedRoot = null;
             return false;
         }
@@ -154,7 +154,27 @@ public partial class JsonSpawner
         { 
             Transform parentToUse = mapTransform != null ? mapTransform : transform;
             icon.Setup(parentToUse, this); 
+            PrepareMarkerVisuals(obj);
         }
+    }
+
+    // Presentation only: recentres the collider and pulse on the drawn sprite
+    // and adds the ground footprint. Never moves the marker or edits its data.
+    public void PrepareMarkerVisuals(GameObject obj)
+    {
+        if (obj == null || obj.GetComponent<FloatingIcon>() == null)
+            return;
+
+        MarkerFootprint.AlignToSpritePivot(obj);
+
+        TriffidVisualSettings visuals = TriffidVisualSettings.Current;
+        if (visuals.overrideIconBob)
+        {
+            FloatingIcon icon = obj.GetComponent<FloatingIcon>();
+            icon.floatAmplitude = visuals.iconBobAmplitude;
+            icon.floatFrequency = visuals.iconBobFrequency;
+        }
+        if (showMarkerFootprints) MarkerFootprint.Attach(obj, this);
     }
 
     private void RegisterToInfoPanel(GameObject obj)
@@ -326,7 +346,7 @@ public partial class JsonSpawner
         {
             string displayedClass = string.IsNullOrWhiteSpace(polygonClassName) ? "<missing>" : polygonClassName;
             string featureId = feature?.id ?? feature?.properties?.id ?? "<missing>";
-            Debug.LogWarning($"[JsonSpawner] Skipping {geom.type} feature '{featureId}': unsupported class '{displayedClass}'.");
+            TriffidLog.Warning("JsonSpawner", $"Skipping {geom.type} feature '{featureId}': unsupported class '{displayedClass}'.");
             return;
         }
 
@@ -443,7 +463,7 @@ public partial class JsonSpawner
             }
             else if (shouldFallbackToSurface)
             {
-                Debug.LogWarning($"[JsonSpawner] Surface snap failed for {className}_{id} (missing/null altitude). Elevation unavailable. Displaying a flagged preview at altitude={alt:F3}.");
+                TriffidLog.Warning("JsonSpawner", $"Surface snap failed for {className}_{id} (missing/null altitude). Elevation unavailable. Displaying a flagged preview at altitude={alt:F3}.");
             }
             
             if (isCentroid)    obj.name = $"Centroid_{className}_{id}";
@@ -597,6 +617,7 @@ public partial class JsonSpawner
             lr.startWidth     = lr.endWidth = lineThickness;
             lr.positionCount  = nodes.Count;
             lr.loop           = isClosedLoop;
+            AnnotationLineStyle.Apply(lr, forceClosedLoop);
 
             Shader fallbackShader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Standard");
             Material mat = lineMaterial != null ? new Material(lineMaterial) : new Material(fallbackShader != null ? fallbackShader : Shader.Find("Hidden/InternalErrorShader"));
@@ -617,7 +638,10 @@ public partial class JsonSpawner
                 if (pointData != null)
                 {
                     pointData.lineColorHex = resolvedLineColorHex;
-                    pointData.pointClass = "Drawing";
+                    // Route vertices keep their class so the panel can name the route.
+                    pointData.pointClass = MissionPaths.IsMissionPath(feature.properties?.className)
+                        ? feature.properties.className
+                        : "Drawing";
                     pointData.category = "Annotation";
                 }
 
@@ -694,7 +718,7 @@ public partial class JsonSpawner
         }
 
         if (log)
-            Debug.Log($"[JsonSpawner] Colliders set to {isActive} for {affectedObjects} spawned objects");
+            TriffidLog.Info("JsonSpawner", $"{(isActive ? "Enabled" : "Disabled")} colliders on {affectedObjects} spawned object(s).");
     }
 
     private static void ApplyColliderStateToObject(GameObject obj, bool isActive)
@@ -780,7 +804,7 @@ public partial class JsonSpawner
                 if (IsLatestMqttObject(obj)) RegisterToInfoPanel(obj);
 
         if (toDestroy.Count > 0)
-            Debug.Log($"[JsonSpawner] Cleared {toDestroy.Count} runtime map objects.");
+            TriffidLog.Info("JsonSpawner", $"Cleared {toDestroy.Count} runtime map object(s).");
     }
 
     private static bool ShouldDestroyMapChild(GameObject child)

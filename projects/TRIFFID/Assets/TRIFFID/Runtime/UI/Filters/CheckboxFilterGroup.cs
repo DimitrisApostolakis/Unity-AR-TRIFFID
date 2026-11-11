@@ -168,16 +168,16 @@ public class CheckboxFilterGroup : MonoBehaviour
     {
         if (master == null)
         {
-            Debug.LogWarning("[CheckboxFilterGroup] Master toggle is not assigned; aggregate state cannot be displayed.", this);
+            TriffidLog.Warning("CheckboxFilterGroup", "Master toggle is not assigned; aggregate state cannot be displayed.", this);
         }
         else if (ResolveCompatibleToggle(master) == null)
         {
-            Debug.LogWarning($"[CheckboxFilterGroup] Master toggle could not be resolved from '{master.name}'; master-toggle behavior may be unavailable.", this);
+            TriffidLog.Warning("CheckboxFilterGroup", $"Master toggle could not be resolved from '{master.name}'; master-toggle behavior may be unavailable.", this);
         }
 
         if (items == null || items.Count == 0)
         {
-            Debug.LogWarning("[CheckboxFilterGroup] No filter items are configured.", this);
+            TriffidLog.Warning("CheckboxFilterGroup", "No filter items are configured.", this);
             return;
         }
 
@@ -186,11 +186,11 @@ public class CheckboxFilterGroup : MonoBehaviour
             Component configuredItem = items[i];
             if (configuredItem == null)
             {
-                Debug.LogWarning($"[CheckboxFilterGroup] Filter item {i} is missing.", this);
+                TriffidLog.Warning("CheckboxFilterGroup", $"Filter item {i} is missing.", this);
             }
             else if (ResolveCompatibleToggle(configuredItem) == null)
             {
-                Debug.LogWarning($"[CheckboxFilterGroup] Filter item {i} toggle could not be resolved from '{configuredItem.name}'; this filter item may be unavailable.", this);
+                TriffidLog.Warning("CheckboxFilterGroup", $"Filter item {i} toggle could not be resolved from '{configuredItem.name}'; this filter item may be unavailable.", this);
             }
         }
     }

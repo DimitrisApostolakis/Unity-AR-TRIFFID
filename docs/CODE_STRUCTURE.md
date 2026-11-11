@@ -12,17 +12,18 @@ No application assembly definitions, namespaces or component names were changed.
 | `Geospatial/Coordinates` | Geographic conversions and surface queries | `GeoUtils`, `GeographicSurfaceQuery` |
 | `Mapping/Loading` | Mesh loading/cache and legacy shared-config lookup | `MeshPathJsonLoader`, `StreamingAssetsPathResolver` |
 | `Mapping/Manipulation` | Map reset, scaling, widths and camera background | `MapReset`, `ScaleChanger`, `LineWidthController` |
-| `Features/Model` | GeoJSON models and geometry validation | `GeoJsonDataModels`, `GeoJsonPolygonValidator` |
+| `Features/Model` | GeoJSON models, geometry validation and Mission Planner route classes | `GeoJsonDataModels`, `GeoJsonPolygonValidator`, `MissionPaths` |
 | `Features/Persistence` | Atomic disk writes and durable edit state | `GeoJsonAtomicFile`, `GeoJsonSyncState` |
 | `Features/Sync` | HTTP requests, incoming parsing and synchronization | `GeoJsonApiManager`, `GeoJsonPayloadParser`, `GeoJsonSyncCoordinator` |
 | `Features/Spawning` | Existing JsonSpawner component and its focused implementations | `JsonSpawner` |
-| `Features/Presentation` | Marker visuals, events, data and category visibility | `FloatingIcon`, `PointData`, `GeoJsonVisibilityFilter` |
+| `Features/Presentation` | Marker visuals, ground footprints, polygon fills, shared colours, events, data and category visibility | `FloatingIcon`, `MarkerFootprint`, `PolygonFill`, `SemanticPalette`, `PointData`, `GeoJsonVisibilityFilter` |
 | `Interaction/Annotations` | Runtime strokes and persistence adapter | `RuntimeLine`, `JsonSpawnerPersistenceAdapter` |
 | `Interaction/Input` | Controller/hand actions and menu interaction | `XRControllerLogger`, `XRControllerInputBridge` |
 | `Interaction/Locomotion` | Movement | `FreeLocomotion` |
 | `UI/Filters` | Filter controls | `CheckboxFilterGroup`, `CheckboxFilterHook` |
-| `UI/InfoPanel` | Selected/hovered point information | `PointInfoPanel` |
-| `UI/Menu` | Modes, buttons, transitions and menu state | `MenuButtonController`, `MenuStateRestorer` |
+| `UI/InfoPanel` | Selected/hovered point information and its runtime styling | `PointInfoPanel`, `InfoPanelStyle` |
+| `UI/Menu` | Modes, buttons, transitions, menu state and runtime cell layout | `MenuButtonController`, `MenuStateRestorer`, `MenuCellStyle` |
+| `Diagnostics` | Consistent, tagged console logging | `TriffidLog` |
 
 `Editor/Inspectors` contains the shared Inspector presentation and its component
 registrations. `Editor/Checks` contains the existing Unity regression menus.
@@ -48,6 +49,107 @@ For a new MonoBehaviour Inspector, add a small registration inheriting
 `Tooltip` attributes to the runtime fields. Do not duplicate configuration into
 Editor-only fields: the shared editor reads the component's actual serialized
 properties. Property drawers for lists and custom types continue to work.
+
+## Marker footprints
+
+`MarkerFootprint` is added at runtime by `JsonSpawner.SetupIcon` to every marker
+that has a `FloatingIcon`. It draws a flat ring, a centre dot and a tether at
+the surface point below the icon's geographic anchor, because the bobbing,
+billboarded sprite cannot state that point itself.
+
+- It only reads `FloatingIcon.localMapPoint`, `PointData.heightAboveSurface`
+  and `PulseEffect.IsPulsing`. It writes no marker state and no coordinates.
+- The surface point is the anchor lowered by the height the info panel shows.
+  With no known surface only a faint ring at the anchor is drawn.
+- Visuals live under a scene-root `Marker Footprints` object, not under the
+  map, so map clearing, `LineWidthController` and the experiment collectors do
+  not enumerate them. They follow the icon's active state and lifetime.
+- Ring colour groups the class: red (fire, smoke), amber (hole, mud, water,
+  debris, barrel, barrier), green (citizen, animal), cyan (UGV), white (other).
+- The ring thickens for the marker whose pulse is running and turns white
+  while a marker is held. There is no spawn animation: markers are rebuilt on
+  every server refresh, and an intro would replay each time.
+
+### Icon pivots
+
+The POI sprites in `Assets/Custom Scripts/Icons` use a custom pivot at their
+lowest opaque pixel (pin tip, badge base, UGV wheels), measured per image. The
+marker transform, and therefore the saved longitude, latitude, altitude and the
+height shown in the info panel, is the point the icon visibly touches. No
+coordinate code changed. `MarkerFootprint.AlignToSpritePivot` recentres the
+prefab `BoxCollider` and the pulse ring on the drawn art at spawn; it is called
+through `JsonSpawner.PrepareMarkerVisuals`. A new icon needs the same pivot set
+in its import settings; a centre-pivoted sprite still works, with an estimated
+tip.
+
+Disable **Marker Footprints > Show Marker Footprints** on `JsonSpawner` to
+reproduce performance captures recorded before footprints existed. Footprints
+are created in Play mode only.
+
+## Visual settings
+
+`Assets/TRIFFID/Resources/TriffidVisualSettings.asset` is the single place to
+tune the presentation layer: feature switches, the four group colours,
+footprint ring/dot/tether sizes, polygon fill opacity, line rounding and the
+menu cell layout. `TriffidVisualSettings.Current` loads it once per Play
+session and falls back to built-in defaults when the asset is missing. Values
+are read when a marker, polygon or menu is set up, so edit them outside Play.
+
+The presentation scripts (`MarkerFootprint`, `PolygonFill`, `SemanticPalette`,
+`MenuCellStyle`, `InfoPanelStyle`, `SpeechHintNames`) hold no tunable numbers
+of their own. `SpeechHintNames` gives every button still on MRTK's generic
+`select` keyword its own caption as keyword, so its hint reads `Say 'Fire'`.
+
+## Mission Planner routes
+
+The draw menu's Mission Planner button draws lines. A line is saved as a
+GeoJSON `LineString` whose `class` is `responder_path` (Responders) or
+`ugv_path` (UGV); `MissionPaths` owns the two names and `MissionPathColors`
+their colours (`responderPathColor`, `ugvPathColor` in the visual settings).
+A loaded route of either class is drawn in the same colour, whatever its
+`marker_color`, and its vertices can be moved and deleted like any other
+line. Any other `LineString` class keeps the previous behaviour.
+
+## Keeping annotations above the map
+
+`JsonSpawner.TryKeepAboveSurface` moves a position that lies below the
+topmost surface on its geographic vertical straight up onto that surface.
+It runs when a point or vertex is placed (`XRControllerLogger`) and when a
+moved marker or vertex is released (`JsonSpawner.CompleteFeatureEdit`).
+Features loaded from a file or the server are never moved by it.
+
+## Polygon fills, shared colours and panel styling
+
+`PolygonFill` is attached beside the `LineRenderer` of every polygon outline
+(GeoJSON polygons in `JsonSpawner.SpawnLinePath`, drawn polygons in
+`XRControllerLogger.CreateLineSession`). It triangulates the outline's current
+world positions and draws them at 20 % of the outline colour. The mesh lives
+under a scene-root `Polygon Fills` object and is rebuilt only when the outline
+moves or changes colour. Each ring is filled on its own, so an inner ring
+(hole) is filled too. `PolygonFill.StyleOutline` rounds the joins and ends of
+all annotation lines. Fills need the always-included `Sprites/Default` shader;
+without it polygons keep their outline only.
+
+`SemanticPalette` is the single source of group colours. `MarkerFootprint`
+rings, the info panel title and the filter/spawn/polygon-class captions use it,
+so the menus act as the legend for the map.
+
+`InfoPanelStyle` adds itself to every `PointInfoPanel` after scene load and
+listens to `PointInfoPanel.MarkerPresented`. It finds `Class`, `IconImage` and
+the slider fill by object name; renaming those objects only disables the
+matching styling. It edits no prefab or scene.
+
+`MenuCellStyle` lays out each icon cell of the filter and spawn menus at
+runtime: whole icon above, caption below, checkbox as a corner badge, and a
+fade for a class that is switched off. It also orders the info panel action
+bar as Previous, Next, Delete. Targets are found by object name (`Checkbox`,
+`UIButtonSpriteIcon`, `Label`, `BtnPrev`, `BtnNext`, `BtnDelete`).
+
+## Walk mode and annotation colliders
+
+`MenuButtonController` keeps annotation colliders enabled for the whole of
+Walk mode, as well as in Info and Draw. Leaving Info or Draw while walking
+keeps them on; leaving Walk turns them off unless Info or Draw is still open.
 
 ## Alignment and path ownership
 
@@ -170,6 +272,31 @@ GeoJSON save or pending-edit state as part of this database move.
   surface query helpers.
 - Keep alignment, mesh loading and map manipulation independent. Reuse the
   shared path resolver when adding another package-aware loader.
+
+## Console logging
+
+Log through `TriffidLog` instead of calling `Debug.Log*` directly:
+
+```csharp
+TriffidLog.Info("JsonSpawner", $"Added {className} point {id} and saved.", this);
+TriffidLog.Warning("MapReset", "Map target is missing; map reset cannot run.", this);
+TriffidLog.Verbose("PointInfoPanel", $"Showing marker {id}.");
+```
+
+- Every message is tagged `[TRIFFID][Source]`, where `Source` is the class
+  name. In the Editor console the tag is bold and coloured per source. Players
+  get plain text, so Quest output can be filtered with
+  `adb logcat -s Unity | grep "\[TRIFFID\]"`.
+- Pass the component as the context so a click in the console selects it.
+- Say what happened and what it affects, e.g. "X is missing; Y is unavailable."
+- Use `Verbose` for per-marker, per-frame or per-state detail. It is hidden by
+  default. Enable it with **Tools > TRIFFID > Verbose Logging** in the Editor or
+  the `TRIFFID_VERBOSE_LOGS` scripting define in a player build.
+- Use `TriffidLog.Fields(("Label", value), ...)` for multi-line reports. Keep
+  the first line a one-line summary.
+- Machine-read output keeps its exact text: the `PASS`/`FAIL` lines of the
+  `Editor/Checks` runners and the `[SyncTiming]`/`[SaveTiming]` tokens.
+  Caught exceptions still go to `Debug.LogException`.
 
 ## Migration and verification
 

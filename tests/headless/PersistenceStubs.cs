@@ -68,6 +68,8 @@ namespace UnityEngine
         public static void Log(object value) { }
         public static void LogWarning(object value, object context = null) { }
         public static void LogError(object value) { }
+        public static void Log(object value, Object context) { }
+        public static void LogError(object value, Object context) { }
     }
     public struct Color { }
     public static class ColorUtility { public static bool TryParseHtmlString(string s, out Color c) { c=new Color(); return true; } }

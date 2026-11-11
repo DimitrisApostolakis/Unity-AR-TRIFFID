@@ -27,6 +27,8 @@ public class RuntimeLine : MonoBehaviour
     private Material _ownedMaterial;
 
     public int NodeCount => _nodes.Count;
+    // Read-only view for presentation code; never used to change the line.
+    public IReadOnlyList<Transform> Nodes => _nodes;
     public string FeatureId { get; private set; }
     public bool IsDraft => _ownsNodes && string.IsNullOrEmpty(FeatureId);
 

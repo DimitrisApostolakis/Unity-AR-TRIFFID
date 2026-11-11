@@ -51,7 +51,7 @@ public static class SyncPilotActions
     {
         Selection.activeGameObject = target.gameObject;
         EditorGUIUtility.PingObject(target.gameObject);
-        Debug.Log("[SyncPilot] Selected " + target.gameObject.name + ". Enable the Fire filter and move this marker through the normal application interaction. Editor selection does not move it.");
+        TriffidLog.Info("SyncPilot", "Selected " + target.gameObject.name + ". Enable the Fire filter and move this marker through the normal application interaction. Editor selection does not move it.");
     }
 
     private static void Record(bool edit)
@@ -129,8 +129,8 @@ public static class SyncPilotActions
             File.AppendAllText(Path.Combine(capture, "unity_actions.jsonl"), action.ToString(Formatting.None) + "\n", new UTF8Encoding(false));
             if (!edit) source.SaveToJson();
             else SelectTarget(target);
-            Debug.Log(edit ? "[SyncPilot] Edit start recorded. Move only the target point printed by Python, then release it." :
-                "[SyncPilot] Unchanged save requested through JsonSpawner. Keep Play mode running and follow Python.");
+            TriffidLog.Info("SyncPilot", edit ? "Edit start recorded. Move only the target point printed by Python, then release it." :
+                "Unchanged save requested through JsonSpawner. Keep Play mode running and follow Python.");
         }
         catch (Exception error) { Debug.LogException(error); }
     }

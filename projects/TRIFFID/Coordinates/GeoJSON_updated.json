@@ -1,165 +1,254 @@
 {
   "type": "FeatureCollection",
-  "features": [
-    {
-      "type": "Feature",
-      "id": "feature_262e61b6a0ee4e258006fb14304a74b5",
-      "properties": {
-        "class": "citizen",
-        "id": "feature_262e61b6a0ee4e258006fb14304a74b5",
-        "confidence": 1.0,
-        "category": "citizen",
-        "source": "ground station",
-        "altitude_m": 96.12451,
-        "height_above_surface_m": 10.279397,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.70826527820541,
-          37.96129135088205,
-          96.124508632346988
-        ]
-      }
+  "lastModified": "2026-11-11T14:13:08.5576540Z",
+  "features": [],
+  "_ar2Sync": {
+    "schemaVersion": 1,
+    "nextRevision": 92,
+    "remoteIds": {},
+    "acknowledgedHashes": {
+      "feature_262e61b6a0ee4e258006fb14304a74b5": "FB1182297F34A4AA4D368D78BAE68747EC983E419262A68281E9DB76A5E979C0",
+      "feature_52344fd4f1614a29b8728be2471047d7": "E6DE87A67493B4F77DD1E4C5557A526A1DB9B0B5ED056610AFB96DDE53A86DAC",
+      "feature_6b8193f6ef664054a20312bf9c7d54a9": "A1D350D91243475E4BE8E75CDBE0DFBCF343976F2FFBB12AA423B28F5E23F6F0",
+      "feature_b0c31acfc59244d398d7cc9f86a7e49e": "FFDDC536C37C49CA82E0E37D5E7E1D19C02DEE679CF9E0BF2B6223A3B0CCED12",
+      "feature_c43c0a328eb243aaa49976648fca4cc6": "87557620E5A463C796834D03D54CC2910399AB347AD3E70C4DE7732C554C887E"
     },
-    {
-      "type": "Feature",
-      "id": "feature_52344fd4f1614a29b8728be2471047d7",
-      "properties": {
-        "class": "safe",
-        "id": "feature_52344fd4f1614a29b8728be2471047d7",
-        "confidence": 1.0,
-        "category": "navigation",
-        "source": "ground station",
-        "altitude_m": 98.8389053,
-        "heights_above_surface_m": [
-          [
-            6.5374531215056777,
-            null,
-            14.475197707302868,
-            3.3521724240854383,
-            6.5374531215056777
-          ]
-        ],
-        "marker-color": "#0000ff",
-        "fill": "#0000ff",
-        "fill-opacity": 0.25
-      },
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [
-          [
-            [
-              23.706691902882586,
-              37.961141350464622,
-              98.838905744254589
-            ],
-            [
-              23.7078356649915,
-              37.960165270971075,
-              83.733850282616913
-            ],
-            [
-              23.709534555157305,
-              37.961428704036017,
-              89.167070151306689
-            ],
-            [
-              23.708582730603773,
-              37.962313299418277,
-              84.767871035262942
-            ],
-            [
-              23.706691902882586,
-              37.961141350464622,
-              98.838905744254589
+    "pending": [
+      {
+        "featureId": "feature_262e61b6a0ee4e258006fb14304a74b5",
+        "kind": "delete",
+        "revision": 1,
+        "operationId": "5fa3e1fa3a0a4fef9dae1a59a4671d26",
+        "payload": {
+          "type": "Feature",
+          "id": "feature_262e61b6a0ee4e258006fb14304a74b5",
+          "properties": {
+            "class": "citizen",
+            "id": "feature_262e61b6a0ee4e258006fb14304a74b5",
+            "confidence": 1.0,
+            "category": "citizen",
+            "source": "ground station",
+            "altitude_m": 96.12451,
+            "height_above_surface_m": 10.279397,
+            "marker-color": "#ff0000"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              23.70826527820541,
+              37.96129135088205,
+              96.124508632346988
             ]
-          ]
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_6b8193f6ef664054a20312bf9c7d54a9",
-      "properties": {
-        "class": "barrier",
-        "id": "feature_6b8193f6ef664054a20312bf9c7d54a9",
-        "confidence": 1.0,
-        "category": "barrier",
-        "source": "ground station",
-        "altitude_m": 80.08369,
-        "height_above_surface_m": 51.6732521,
-        "marker-color": "#ff0000"
+          }
+        },
+        "baseHash": "FB1182297F34A4AA4D368D78BAE68747EC983E419262A68281E9DB76A5E979C0",
+        "status": "reconcile",
+        "attempts": 0,
+        "notBeforeUtcTicks": 0,
+        "mayHaveReachedServer": false,
+        "lastSubmittedHash": null,
+        "error": null,
+        "remoteConflict": null,
+        "remoteConflictId": "feature_262e61b6a0ee4e258006fb14304a74b5"
       },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.708714061889957,
-          37.960896658079285,
-          80.083685914054513
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_b0c31acfc59244d398d7cc9f86a7e49e",
-      "properties": {
-        "class": "road",
-        "id": "feature_b0c31acfc59244d398d7cc9f86a7e49e",
-        "confidence": 1.0,
-        "category": "navigation",
-        "source": "ground station",
-        "altitude_m": 79.56011,
-        "heights_above_surface_m": [
-          3.476804475300014,
-          6.3345752786844969,
-          3.8021688926965
-        ],
-        "marker-color": "#ffeb04"
+      {
+        "featureId": "feature_52344fd4f1614a29b8728be2471047d7",
+        "kind": "delete",
+        "revision": 2,
+        "operationId": "8d72d0c7716a48eb975ad0c20da1360b",
+        "payload": {
+          "type": "Feature",
+          "id": "feature_52344fd4f1614a29b8728be2471047d7",
+          "properties": {
+            "class": "safe",
+            "id": "feature_52344fd4f1614a29b8728be2471047d7",
+            "confidence": 1.0,
+            "category": "navigation",
+            "source": "ground station",
+            "altitude_m": 98.8389053,
+            "heights_above_surface_m": [
+              [
+                6.5374531215056777,
+                null,
+                14.475197707302868,
+                3.3521724240854383,
+                6.5374531215056777
+              ]
+            ],
+            "marker-color": "#0000ff",
+            "fill": "#0000ff",
+            "fill-opacity": 0.25
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  23.706691902882586,
+                  37.961141350464622,
+                  98.838905744254589
+                ],
+                [
+                  23.7078356649915,
+                  37.960165270971075,
+                  83.733850282616913
+                ],
+                [
+                  23.709534555157305,
+                  37.961428704036017,
+                  89.167070151306689
+                ],
+                [
+                  23.708582730603773,
+                  37.962313299418277,
+                  84.767871035262942
+                ],
+                [
+                  23.706691902882586,
+                  37.961141350464622,
+                  98.838905744254589
+                ]
+              ]
+            ]
+          }
+        },
+        "baseHash": "E6DE87A67493B4F77DD1E4C5557A526A1DB9B0B5ED056610AFB96DDE53A86DAC",
+        "status": "reconcile",
+        "attempts": 0,
+        "notBeforeUtcTicks": 0,
+        "mayHaveReachedServer": false,
+        "lastSubmittedHash": null,
+        "error": null,
+        "remoteConflict": null,
+        "remoteConflictId": "feature_52344fd4f1614a29b8728be2471047d7"
       },
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            23.707919253819004,
-            37.960039275631118,
-            79.198539710603654
-          ],
-          [
-            23.70882241994364,
-            37.960665155733082,
-            80.800962396897376
-          ],
-          [
-            23.709684681904793,
-            37.961231915328717,
-            79.560109433718026
-          ]
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_c43c0a328eb243aaa49976648fca4cc6",
-      "properties": {
-        "class": "animal",
-        "id": "feature_c43c0a328eb243aaa49976648fca4cc6",
-        "confidence": 1.0,
-        "category": "animal",
-        "source": "ground station",
-        "altitude_m": 83.05541,
-        "height_above_surface_m": 6.43357658,
-        "marker-color": "#ff0000"
+      {
+        "featureId": "feature_6b8193f6ef664054a20312bf9c7d54a9",
+        "kind": "delete",
+        "revision": 3,
+        "operationId": "b255a13eff044688a20f15d597150c9f",
+        "payload": {
+          "type": "Feature",
+          "id": "feature_6b8193f6ef664054a20312bf9c7d54a9",
+          "properties": {
+            "class": "barrier",
+            "id": "feature_6b8193f6ef664054a20312bf9c7d54a9",
+            "confidence": 1.0,
+            "category": "barrier",
+            "source": "ground station",
+            "altitude_m": 80.08369,
+            "height_above_surface_m": 51.6732521,
+            "marker-color": "#ff0000"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              23.708714061889957,
+              37.960896658079285,
+              80.083685914054513
+            ]
+          }
+        },
+        "baseHash": "A1D350D91243475E4BE8E75CDBE0DFBCF343976F2FFBB12AA423B28F5E23F6F0",
+        "status": "reconcile",
+        "attempts": 0,
+        "notBeforeUtcTicks": 0,
+        "mayHaveReachedServer": false,
+        "lastSubmittedHash": null,
+        "error": null,
+        "remoteConflict": null,
+        "remoteConflictId": "feature_6b8193f6ef664054a20312bf9c7d54a9"
       },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.708019251449262,
-          37.960841944993113,
-          83.055415101349354
-        ]
+      {
+        "featureId": "feature_b0c31acfc59244d398d7cc9f86a7e49e",
+        "kind": "delete",
+        "revision": 4,
+        "operationId": "bfdd1cbefcd04563ab2fd74727dec054",
+        "payload": {
+          "type": "Feature",
+          "id": "feature_b0c31acfc59244d398d7cc9f86a7e49e",
+          "properties": {
+            "class": "road",
+            "id": "feature_b0c31acfc59244d398d7cc9f86a7e49e",
+            "confidence": 1.0,
+            "category": "navigation",
+            "source": "ground station",
+            "altitude_m": 79.56011,
+            "heights_above_surface_m": [
+              3.476804475300014,
+              6.3345752786844969,
+              3.8021688926965
+            ],
+            "marker-color": "#ffeb04"
+          },
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                23.707919253819004,
+                37.960039275631118,
+                79.198539710603654
+              ],
+              [
+                23.70882241994364,
+                37.960665155733082,
+                80.800962396897376
+              ],
+              [
+                23.709684681904793,
+                37.961231915328717,
+                79.560109433718026
+              ]
+            ]
+          }
+        },
+        "baseHash": "FFDDC536C37C49CA82E0E37D5E7E1D19C02DEE679CF9E0BF2B6223A3B0CCED12",
+        "status": "reconcile",
+        "attempts": 0,
+        "notBeforeUtcTicks": 0,
+        "mayHaveReachedServer": false,
+        "lastSubmittedHash": null,
+        "error": null,
+        "remoteConflict": null,
+        "remoteConflictId": "feature_b0c31acfc59244d398d7cc9f86a7e49e"
+      },
+      {
+        "featureId": "feature_c43c0a328eb243aaa49976648fca4cc6",
+        "kind": "delete",
+        "revision": 5,
+        "operationId": "954022645a6144889482875b2fd421a3",
+        "payload": {
+          "type": "Feature",
+          "id": "feature_c43c0a328eb243aaa49976648fca4cc6",
+          "properties": {
+            "class": "animal",
+            "id": "feature_c43c0a328eb243aaa49976648fca4cc6",
+            "confidence": 1.0,
+            "category": "animal",
+            "source": "ground station",
+            "altitude_m": 83.05541,
+            "height_above_surface_m": 6.43357658,
+            "marker-color": "#ff0000"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              23.708019251449262,
+              37.960841944993113,
+              83.055415101349354
+            ]
+          }
+        },
+        "baseHash": "87557620E5A463C796834D03D54CC2910399AB347AD3E70C4DE7732C554C887E",
+        "status": "reconcile",
+        "attempts": 0,
+        "notBeforeUtcTicks": 0,
+        "mayHaveReachedServer": false,
+        "lastSubmittedHash": null,
+        "error": null,
+        "remoteConflict": null,
+        "remoteConflictId": "feature_c43c0a328eb243aaa49976648fca4cc6"
       }
-    }
-  ]
+    ]
+  }
 }

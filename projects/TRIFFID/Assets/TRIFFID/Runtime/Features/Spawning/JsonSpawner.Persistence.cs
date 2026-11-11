@@ -44,7 +44,7 @@ public partial class JsonSpawner
     {
         if (currentRootData == null)
         {
-            Debug.LogWarning("[JsonSpawner] No data to save.");
+            TriffidLog.Warning("JsonSpawner", "Save skipped: no GeoJSON data is loaded.");
             return;
         }
 
@@ -54,7 +54,7 @@ public partial class JsonSpawner
         bool hasNoFeatures = currentRootData?.features != null && currentRootData.features.Count == 0;
         if (!hasNoFeatures && !HasValidDataForSave())
         {
-            Debug.LogWarning("[JsonSpawner] Save skipped because validation failed (NaN/zero coordinates).");
+            TriffidLog.Warning("JsonSpawner", "Save skipped because validation failed (NaN/zero coordinates).");
             return;
         }
 
@@ -67,8 +67,8 @@ public partial class JsonSpawner
         SaveStageTimings timings = new SaveStageTimings();
         try
         {
-            timings.outbox = MeasureSaveStage("AR2.Save.CaptureChanges", () => GeoJsonOutbox.CaptureChanges(currentRootData, DateTime.UtcNow, 0.5d));
-            timings.labels = MeasureSaveStage("AR2.Save.StatusLabels", UpdateSyncStatusLabels);
+            timings.outbox = MeasureSaveStage("TRIFFID.Save.CaptureChanges", () => GeoJsonOutbox.CaptureChanges(currentRootData, DateTime.UtcNow, 0.5d));
+            timings.labels = MeasureSaveStage("TRIFFID.Save.StatusLabels", UpdateSyncStatusLabels);
         }
         catch (InvalidDataException ex)
         {
@@ -80,11 +80,11 @@ public partial class JsonSpawner
         string json = null;
         try
         {
-            timings.serialize = MeasureSaveStage("AR2.Save.Serialize", () => json = JsonConvert.SerializeObject(currentRootData, Formatting.Indented));
+            timings.serialize = MeasureSaveStage("TRIFFID.Save.Serialize", () => json = JsonConvert.SerializeObject(currentRootData, Formatting.Indented));
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[JsonSpawner] Failed to serialize JSON: {ex.Message}");
+            TriffidLog.Error("JsonSpawner", $"Save failed while serializing GeoJSON: {ex.Message}");
             return;
         }
 
@@ -95,9 +95,9 @@ public partial class JsonSpawner
     internal bool TryWriteExternalJsonSnapshotAtomically(string json, int expectedLocalVersion)
     {
         bool committed = false;
-        double elapsed = MeasureSaveStage("AR2.Sync.Commit", () => committed = WriteExternalJsonSnapshot(json, expectedLocalVersion));
+        double elapsed = MeasureSaveStage("TRIFFID.Sync.Commit", () => committed = WriteExternalJsonSnapshot(json, expectedLocalVersion));
         if (logSaveStageTimings && elapsed >= 16d)
-            Debug.Log($"[AR2 SyncTiming] commit={elapsed:F2}ms chars={json.Length} written={committed}");
+            TriffidLog.Info("JsonSpawner", $"[SyncTiming] commit={elapsed:F2}ms chars={json.Length} written={committed}");
         return committed;
     }
 
@@ -136,7 +136,7 @@ public partial class JsonSpawner
 
             SyncData(movedData, movedIcon.transform);
             SaveCurrentStateToPersistentStorage();
-            Debug.Log($"[JsonSpawner] Position saved for mapped object.");
+            TriffidLog.Verbose("JsonSpawner", $"Saved new position of feature {mapping.parentFeature?.id ?? "<no id>"}.");
         }
         else
         {
@@ -178,13 +178,19 @@ public partial class JsonSpawner
             lastSavedVersion = Math.Max(lastSavedVersion, saveVersion);
             autoSaveTimer = 0f;
             string detail = logSaveStageTimings
-                ? $" | [AR2 SaveTiming] v={saveVersion} chars={json.Length} outbox={timings.outbox:F2}ms labels={timings.labels:F2}ms serialize={timings.serialize:F2}ms backgroundWrite={writeTicks * 1000d / Stopwatch.Frequency:F2}ms resumeWait={resumeMs:F2}ms followUp={saveQueued || dataVersion > lastSavedVersion}"
+                ? $" | [SaveTiming] v={saveVersion} chars={json.Length} outbox={timings.outbox:F2}ms labels={timings.labels:F2}ms serialize={timings.serialize:F2}ms backgroundWrite={writeTicks * 1000d / Stopwatch.Frequency:F2}ms resumeWait={resumeMs:F2}ms followUp={saveQueued || dataVersion > lastSavedVersion}"
                 : string.Empty;
-            MeasureSaveStage("AR2.Save.CompletionLog", () => Debug.Log($"[JsonSpawner] Saved to: {saveFilePath} (lastModified: {currentRootData.lastModified})" + detail));
+            MeasureSaveStage("TRIFFID.Save.CompletionLog", () =>
+            {
+                // Routine autosaves are verbose; with stage timings enabled the line carries the documented [SaveTiming] data.
+                string message = $"Saved GeoJSON to '{saveFilePath}' (lastModified: {currentRootData.lastModified}).{detail}";
+                if (logSaveStageTimings) TriffidLog.Info("JsonSpawner", message);
+                else TriffidLog.Verbose("JsonSpawner", message);
+            });
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[JsonSpawner] Async save failed: {ex.Message}");
+            TriffidLog.Error("JsonSpawner", $"Background save to '{saveFilePath}' failed: {ex.Message}");
         }
         finally
         {
@@ -192,7 +198,7 @@ public partial class JsonSpawner
             if (writeSucceeded && (saveQueued || dataVersion > lastSavedVersion))
             {
                 saveQueued = false;
-                MeasureSaveStage("AR2.Save.QueuedPreparation", SaveCurrentStateToPersistentStorage);
+                MeasureSaveStage("TRIFFID.Save.QueuedPreparation", SaveCurrentStateToPersistentStorage);
             }
         }
     }
@@ -228,7 +234,7 @@ public partial class JsonSpawner
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[JsonSpawner] Sync flush serialize failed: {ex.Message}");
+            TriffidLog.Error("JsonSpawner", $"Immediate save failed while serializing GeoJSON: {ex.Message}");
             return;
         }
 
@@ -245,7 +251,7 @@ public partial class JsonSpawner
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[JsonSpawner] Sync flush write failed: {ex.Message}");
+            TriffidLog.Error("JsonSpawner", $"Immediate save failed while writing the file: {ex.Message}");
         }
     }
 
@@ -340,12 +346,12 @@ public partial class JsonSpawner
                     }
                 }
                 GeoJsonAtomicFile.Write(changesPath, root.ToString(Newtonsoft.Json.Formatting.Indented));
-                Debug.Log($"[JsonSpawner] Live Move Saved for New Object ID: {pd.pointID}");
+                TriffidLog.Verbose("JsonSpawner", $"Recorded move of new feature {pd.pointID} in the changes file.");
             }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[JsonSpawner] Failed to update coordinates_changes.json on move: {ex.Message}");
+            TriffidLog.Error("JsonSpawner", $"Could not record the move in coordinates_changes.json: {ex.Message}");
         }
     }
 }

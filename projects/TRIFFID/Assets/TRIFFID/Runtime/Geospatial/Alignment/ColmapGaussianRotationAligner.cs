@@ -127,14 +127,14 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
     {
         if (TryLoadRotationJson(out LoadedRotation loaded))
         {
-            Debug.Log(
-                "[ColmapGaussianRotationAligner] Transform JSON is valid.\n" +
-                $"Path: {loaded.ResolvedPath}\n" +
-                $"Has Scale Field: {loaded.HasScale}\n" +
-                $"Scale Field: {(loaded.HasScale ? loaded.Scale.ToString("G9", CultureInfo.InvariantCulture) : "not used")}\n" +
-                $"Rotation RowMajor:\n{FormatRowMajor3x3(loaded.RotationRowMajor)}",
-                this
-            );
+            TriffidLog.Info(
+                "ColmapGaussianRotationAligner",
+                "Transform JSON is valid." +
+                TriffidLog.Fields(
+                    ("Path", loaded.ResolvedPath),
+                    ("Scale", loaded.HasScale ? loaded.Scale.ToString("G9", CultureInfo.InvariantCulture) : "not used"),
+                    ("Rotation (row-major)", FormatRowMajor3x3(loaded.RotationRowMajor))),
+                this);
         }
     }
 
@@ -148,15 +148,14 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
 
         bool exists = File.Exists(resolvedTransformPath);
 
-        Debug.Log(
-            "[ColmapGaussianRotationAligner] Shared Transform Path Validation\n" +
-            $"Use Shared Transform Path Json: {useSharedTransformPathJson}\n" +
-            $"Shared Config File: {sharedTransformPathsJsonFile}\n" +
-            $"Transform Path Json Key: {transformPathJsonKey}\n" +
-            $"Resolved Transform Path: {resolvedTransformPath}\n" +
-            $"Transform File Exists: {exists}",
-            this
-        );
+        string report = TriffidLog.Fields(
+            ("Use shared path JSON", useSharedTransformPathJson),
+            ("Shared config file", sharedTransformPathsJsonFile),
+            ("Path key", transformPathJsonKey),
+            ("Resolved path", resolvedTransformPath),
+            ("File exists", exists));
+        if (exists) TriffidLog.Info("ColmapGaussianRotationAligner", "Shared transform path is valid." + report, this);
+        else TriffidLog.Warning("ColmapGaussianRotationAligner", "Shared transform path resolved, but the file does not exist." + report, this);
     }
 
     [ContextMenu("Apply JSON Rotation")]
@@ -176,13 +175,13 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
     {
         if (mapColliderSync == null)
         {
-            Debug.LogWarning("[ColmapGaussianRotationAligner] MapColliderSync is not assigned. Collider sync skipped.", this);
+            TriffidLog.Warning("ColmapGaussianRotationAligner", "MapColliderSync is not assigned. Collider sync skipped.", this);
             return;
         }
 
         if (mapColliderSync.GaussianRenderer != gaussianRenderer)
         {
-            Debug.LogWarning("[ColmapGaussianRotationAligner] Collider follower must reference the same Gaussian Renderer. Sync skipped.", this);
+            TriffidLog.Warning("ColmapGaussianRotationAligner", "Collider follower must reference the same Gaussian Renderer. Sync skipped.", this);
             return;
         }
         mapColliderSync.SyncToMap();
@@ -193,7 +192,7 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
     {
         if (gaussianRenderer == null)
         {
-            Debug.LogWarning("[ColmapGaussianRotationAligner] Gaussian Renderer is not assigned. Nothing was reset.", this);
+            TriffidLog.Warning("ColmapGaussianRotationAligner", "Gaussian Renderer is not assigned. Nothing was reset.", this);
             return;
         }
 
@@ -206,14 +205,14 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
             SyncColliderNow();
         }
 
-        Debug.Log("[ColmapGaussianRotationAligner] Gaussian Renderer rotation reset only. Position and scale were not touched.", this);
+        TriffidLog.Info("ColmapGaussianRotationAligner", "Reset the Gaussian Renderer rotation (position and scale unchanged).", this);
     }
 
     private void ApplyJsonRotationInternal(bool shouldSyncCollider)
     {
         if (gaussianRenderer == null)
         {
-            Debug.LogWarning("[ColmapGaussianRotationAligner] Gaussian Renderer is not assigned. Nothing was applied.", this);
+            TriffidLog.Warning("ColmapGaussianRotationAligner", "Gaussian Renderer is not assigned. Nothing was applied.", this);
             return;
         }
 
@@ -231,7 +230,7 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
 
         if (!IsFinite(finalRotation))
         {
-            Debug.LogError("[ColmapGaussianRotationAligner] Final rotation contains NaN or Infinity. Nothing was applied.", this);
+            TriffidLog.Error("ColmapGaussianRotationAligner", "Final rotation contains NaN or Infinity. Nothing was applied.", this);
             return;
         }
 
@@ -239,17 +238,18 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
 
         if (logDetails)
         {
-            Debug.Log(
-                "[ColmapGaussianRotationAligner] Applied JSON rotation to Gaussian Renderer only.\n" +
-                $"JSON Path: {loaded.ResolvedPath}\n" +
-                $"Gaussian Renderer: {gaussianRenderer.name}\n" +
-                $"Final Local Rotation Euler: {finalRotation.eulerAngles}\n" +
-                $"Transpose Rotation: {transposeRotationMatrix}\n" +
-                $"Invert Rotation: {invertRotation}\n" +
-                $"ENU-to-Unity Axis Mode: {enuToUnityAxisMode}\n" +
-                $"Flip X/Y/Z: {flipX}/{flipY}/{flipZ}",
-                this
-            );
+            TriffidLog.Info(
+                "ColmapGaussianRotationAligner",
+                "Applied JSON rotation to the Gaussian Renderer (position and scale unchanged)." +
+                TriffidLog.Fields(
+                    ("JSON path", loaded.ResolvedPath),
+                    ("Gaussian Renderer", gaussianRenderer.name),
+                    ("Local rotation (euler)", finalRotation.eulerAngles),
+                    ("Transpose matrix", transposeRotationMatrix),
+                    ("Invert rotation", invertRotation),
+                    ("ENU-to-Unity axes", enuToUnityAxisMode),
+                    ("Flip X/Y/Z", $"{flipX}/{flipY}/{flipZ}")),
+                this);
         }
 
         if (shouldSyncCollider)
@@ -280,7 +280,7 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
 
         if (!File.Exists(resolvedPath))
         {
-            Debug.LogError($"[ColmapGaussianRotationAligner] Transform JSON file does not exist:\n{resolvedPath}", this);
+            TriffidLog.Error("ColmapGaussianRotationAligner", "Transform JSON file does not exist." + TriffidLog.Fields(("Path", resolvedPath)), this);
             return false;
         }
 
@@ -291,7 +291,7 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[ColmapGaussianRotationAligner] Failed to read JSON file:\n{resolvedPath}\n{ex.Message}", this);
+            TriffidLog.Error("ColmapGaussianRotationAligner", "Could not read the transform JSON file." + TriffidLog.Fields(("Path", resolvedPath), ("Reason", ex.Message)), this);
             return false;
         }
 
@@ -302,14 +302,14 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[ColmapGaussianRotationAligner] Invalid JSON:\n{resolvedPath}\n{ex.Message}", this);
+            TriffidLog.Error("ColmapGaussianRotationAligner", "Transform JSON is not valid JSON." + TriffidLog.Fields(("Path", resolvedPath), ("Reason", ex.Message)), this);
             return false;
         }
 
         JObject colmapToEnu = root["colmap_to_enu"] as JObject;
         if (colmapToEnu == null)
         {
-            Debug.LogError("[ColmapGaussianRotationAligner] JSON is missing required object: colmap_to_enu", this);
+            TriffidLog.Error("ColmapGaussianRotationAligner", "Transform JSON is missing the required 'colmap_to_enu' object.", this);
             return false;
         }
 
@@ -352,7 +352,7 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
 
         if (!TryExtractRotation(linear, out finalRotation))
         {
-            Debug.LogError("[ColmapGaussianRotationAligner] Failed to extract final Unity rotation from JSON matrix.", this);
+            TriffidLog.Error("ColmapGaussianRotationAligner", "Failed to extract final Unity rotation from JSON matrix.", this);
             return false;
         }
 
@@ -450,7 +450,7 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
     {
         if (!IsFinite(axis) || axis.sqrMagnitude < Epsilon * Epsilon)
         {
-            Debug.LogWarning($"[ColmapGaussianRotationAligner] {axisName} is invalid. Using fallback: {fallback}", this);
+            TriffidLog.Warning("ColmapGaussianRotationAligner", $"{axisName} is invalid. Using fallback: {fallback}", this);
             return fallback.normalized;
         }
 
@@ -471,7 +471,7 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
 
         if (sx < Epsilon || sy < Epsilon || sz < Epsilon)
         {
-            Debug.LogError($"[ColmapGaussianRotationAligner] Rotation extraction failed because one axis has near-zero magnitude. sx={sx}, sy={sy}, sz={sz}", this);
+            TriffidLog.Error("ColmapGaussianRotationAligner", $"Rotation extraction failed because one axis has near-zero magnitude. sx={sx}, sy={sy}, sz={sz}", this);
             return false;
         }
 
@@ -488,13 +488,13 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
 
         if (!IsFinite(xAxis) || !IsFinite(yAxis) || !IsFinite(zAxis))
         {
-            Debug.LogError("[ColmapGaussianRotationAligner] Rotation extraction produced invalid basis vectors.", this);
+            TriffidLog.Error("ColmapGaussianRotationAligner", "Rotation extraction produced invalid basis vectors.", this);
             return false;
         }
 
         if (zAxis.sqrMagnitude < Epsilon * Epsilon || yAxis.sqrMagnitude < Epsilon * Epsilon)
         {
-            Debug.LogError("[ColmapGaussianRotationAligner] Rotation extraction produced invalid rotation axes.", this);
+            TriffidLog.Error("ColmapGaussianRotationAligner", "Rotation extraction produced invalid rotation axes.", this);
             return false;
         }
 
@@ -514,8 +514,8 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
                 out string error))
             return true;
 
-        Debug.LogError(
-            "[ColmapGaussianRotationAligner] Failed to resolve transform path: " + error, this);
+        TriffidLog.Error("ColmapGaussianRotationAligner",
+            "Failed to resolve transform path: " + error, this);
         return false;
     }
 
@@ -562,15 +562,14 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
         JArray array = token as JArray;
         if (array == null)
         {
-            Debug.LogError($"[ColmapGaussianRotationAligner] JSON field must be an array: {fieldName}", this);
+            TriffidLog.Error("ColmapGaussianRotationAligner", $"JSON field '{fieldName}' must be an array.", this);
             return false;
         }
 
         if (array.Count != expectedCount)
         {
-            Debug.LogError(
-                $"[ColmapGaussianRotationAligner] JSON field has wrong length: {fieldName}\n" +
-                $"Expected {expectedCount}, got {array.Count}",
+            TriffidLog.Error("ColmapGaussianRotationAligner",
+                $"JSON field '{fieldName}' has {array.Count} value(s); expected {expectedCount}.",
                 this
             );
             return false;
@@ -586,13 +585,13 @@ public class ColmapGaussianRotationAligner : MonoBehaviour
             }
             catch
             {
-                Debug.LogError($"[ColmapGaussianRotationAligner] JSON field contains a non-number: {fieldName}[{i}]", this);
+                TriffidLog.Error("ColmapGaussianRotationAligner", $"JSON field '{fieldName}[{i}]' is not a number.", this);
                 return false;
             }
 
             if (!IsFinite(values[i]))
             {
-                Debug.LogError($"[ColmapGaussianRotationAligner] JSON field contains NaN or Infinity: {fieldName}[{i}]", this);
+                TriffidLog.Error("ColmapGaussianRotationAligner", $"JSON field '{fieldName}[{i}]' is NaN or Infinity.", this);
                 return false;
             }
         }

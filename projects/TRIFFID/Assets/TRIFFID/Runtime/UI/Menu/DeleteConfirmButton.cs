@@ -48,13 +48,13 @@ public class DeleteConfirmButton : MonoBehaviour
     private void ValidateConfiguration()
     {
         if (buttonText == null)
-            Debug.LogWarning("[DeleteConfirmButton] Button text is missing; confirmation state will not be visible.", this);
+            TriffidLog.Warning("DeleteConfirmButton", "Button text is missing; confirmation state will not be visible.", this);
 
         if (interactable == null)
-            Debug.LogWarning("[DeleteConfirmButton] XR interactable is missing; hover color feedback is unavailable.", this);
+            TriffidLog.Warning("DeleteConfirmButton", "XR interactable is missing; hover color feedback is unavailable.", this);
 
         if (!IsFinite(cancelDelay) || cancelDelay < 0f)
-            Debug.LogWarning("[DeleteConfirmButton] cancelDelay must be finite and non-negative.", this);
+            TriffidLog.Warning("DeleteConfirmButton", "cancelDelay must be finite and non-negative.", this);
     }
 
     private static bool IsFinite(float value)
@@ -121,7 +121,7 @@ public class DeleteConfirmButton : MonoBehaviour
                 targetNode = parentData.transform;
             else
             {
-                Debug.LogWarning("[DeleteConfirmButton] No target node to delete.");
+                TriffidLog.Warning("DeleteConfirmButton", "Delete confirmed, but no target node is assigned.");
                 ResetButton();
                 return;
             }

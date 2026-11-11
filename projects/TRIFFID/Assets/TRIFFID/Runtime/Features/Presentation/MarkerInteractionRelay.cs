@@ -55,7 +55,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
         {
             if (logIfMissing && !missingInteractableWarningLogged)
             {
-                Debug.LogWarning("[MarkerInteractionRelay] XRBaseInteractable is missing; marker interaction events cannot be relayed.", this);
+                TriffidLog.Warning("MarkerInteractionRelay", "XRBaseInteractable is missing; marker interaction events cannot be relayed.", this);
                 missingInteractableWarningLogged = true;
             }
             return;
@@ -104,7 +104,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
         ResolveSpawner();
         if (jsonSpawner == null && !missingSpawnerWarningLogged)
         {
-            Debug.LogWarning("[MarkerInteractionRelay] JsonSpawner is unavailable; marker movement cannot be persisted.", this);
+            TriffidLog.Warning("MarkerInteractionRelay", "JsonSpawner is unavailable; marker movement cannot be persisted.", this);
             missingSpawnerWarningLogged = true;
         }
 
@@ -139,10 +139,20 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
         if (!isManipulating)
             return;
 
+        ResolveSpawner();
+
+        // While held, a marker or a line/polygon vertex cannot be pushed under
+        // the map surface: every frame it is brought back up before rendering.
+        if (jsonSpawner != null)
+        {
+            Vector3 held = transform.position;
+            if (jsonSpawner.TryKeepAboveSurface(ref held))
+                transform.position = held;
+        }
+
         if (floatingIcon != null)
             return;
 
-        ResolveSpawner();
         if (jsonSpawner == null || pointData == null)
             return;
 
@@ -177,7 +187,7 @@ public class MarkerInteractionRelay : MonoBehaviour, IMarkerFocusable
         if (missingPointDataWarningLogged)
             return;
 
-        Debug.LogWarning("[MarkerInteractionRelay] PointData is missing; marker focus and movement metadata cannot be relayed.", this);
+        TriffidLog.Warning("MarkerInteractionRelay", "PointData is missing; marker focus and movement metadata cannot be relayed.", this);
         missingPointDataWarningLogged = true;
     }
 }

@@ -118,7 +118,7 @@ namespace UnityEngine
     }
     public static class Time { public static float deltaTime=1f; }
     public static class Application { public static bool isPlaying; }
-    public static class Debug { public static void Log(object v) { } public static void LogWarning(object v) { } public static void LogWarning(object v,Object context) { } }
+    public static class Debug { public static void Log(object v) { } public static void LogWarning(object v) { } public static void LogWarning(object v,Object context) { } public static void Log(object v,Object context) { } public static void LogError(object v,Object context) { } }
     public sealed class Header:Attribute { public Header(string s) { } }
     public sealed class Tooltip:Attribute { public Tooltip(string s) { } }
     public sealed class SerializeField:Attribute { }

@@ -25,6 +25,7 @@ runtime_dir="$repo_root/projects/TRIFFID/Assets/TRIFFID/Runtime"
     "$runtime_dir/Features/Sync/GeoJsonPayloadParser.cs" \
     "$runtime_dir/Features/Presentation/GeoJsonVisibilityFilter.cs" \
     "$runtime_dir/Features/Sync/GeoJsonSyncCoordinator.cs" \
+    "$runtime_dir/Diagnostics/TriffidLog.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Checks/AR2CoreRegressionTests.cs" \
     "$repo_root/tests/headless/CoordinatorStubs.cs" \
     "$repo_root/tests/headless/CoordinatorRegressionTests.cs" \
@@ -34,6 +35,7 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
 
 "${compiler[@]}" -langversion:latest -warnaserror -define:UNITY_EDITOR -out:"$build_dir/AR2.MeshTests.exe" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Runtime/Mapping/Loading/MeshPathJsonLoader.cs" \
+    "$runtime_dir/Diagnostics/TriffidLog.cs" \
     "$repo_root/tests/headless/MeshLoaderStubs.cs" \
     "$repo_root/tests/headless/MeshLoaderRegressionTests.cs"
 "$mono_bin" "${mono_options[@]}" "$build_dir/AR2.MeshTests.exe"
@@ -42,7 +44,9 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
 # Assets/Editor, so inaccessible runtime helpers fail this build as well.
 "${compiler[@]}" -langversion:latest -warnaserror -target:library -out:"$build_dir/AR2.InteractionRuntime.dll" \
     "$runtime_dir/Geospatial/Coordinates/GeographicSurfaceQuery.cs" \
+    "$runtime_dir/Features/Model/MissionPaths.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Runtime/UI/InfoPanel/PointInfoPanel.cs" \
+    "$runtime_dir/Diagnostics/TriffidLog.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Runtime/Features/Presentation/MarkerEventManager.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Runtime/Interaction/Annotations/RuntimeLine.cs" \
     "$repo_root/tests/headless/InteractionStubs.cs"
@@ -55,6 +59,7 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
 "${compiler[@]}" -langversion:latest -warnaserror -out:"$build_dir/AR2.InspectorTests.exe" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Inspectors/TriffidGroupedEditor.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Inspectors/TriffidComponentEditors.cs" \
+    "$runtime_dir/Diagnostics/TriffidLog.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Inspectors/UnifiedPathInspectors.cs" \
     "$repo_root/tests/headless/InspectorStubs.cs" \
     "$repo_root/tests/headless/InspectorRegressionTests.cs"
@@ -68,6 +73,7 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
     "$runtime_dir/Features/Persistence/GeoJsonSyncState.cs" \
     "$runtime_dir/Features/Persistence/GeoJsonAtomicFile.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SceneConsistencyCollector.cs" \
+    "$runtime_dir/Diagnostics/TriffidLog.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SceneConsistencySession.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SyncPilotActions.cs" \
     "$repo_root/tests/experiments/SceneEditorStubs.cs" \
@@ -86,6 +92,7 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Checks/AR2CoreRegressionTests.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/SceneConsistencySession.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/AppNumericsCollector.cs" \
+    "$runtime_dir/Diagnostics/TriffidLog.cs" \
     "$repo_root/projects/TRIFFID/Assets/TRIFFID/Editor/Experiments/AppPerformanceCollector.cs" \
     "$repo_root/tests/experiments/SceneEditorStubs.cs" \
     "$repo_root/tests/experiments/AppNumericsSafetyTests.cs"
@@ -102,6 +109,7 @@ cp -- "$json_dll" "$build_dir/Newtonsoft.Json.dll"
     "$runtime_dir/Features/Spawning/JsonSpawner.Persistence.cs" \
     "$runtime_dir/Features/Spawning/JsonSpawner.FeatureEdits.cs" \
     "$runtime_dir/Features/Presentation/FloatingIcon.cs" \
+    "$runtime_dir/Diagnostics/TriffidLog.cs" \
     "$runtime_dir/Features/Presentation/MarkerInteractionRelay.cs" \
     "$repo_root/tests/headless/PersistenceStubs.cs" \
     "$repo_root/tests/headless/PersistenceRegressionTests.cs"

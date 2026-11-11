@@ -34,18 +34,18 @@ public sealed class MapColliderSyncEditor : TriffidGroupedEditor
         var sync = (MapColliderSync)target;
         if (!sync.enabled)
         {
-            Debug.LogWarning("[MapColliderSync] Enable the component before matching.", sync);
+            TriffidLog.Warning("MapColliderSync", "Enable the component before matching.", sync);
             return;
         }
         if (!sync.TryValidateSetup(out string error))
         {
-            Debug.LogWarning("[MapColliderSync] " + error, sync);
+            TriffidLog.Warning("MapColliderSync", error, sync);
             return;
         }
         Transform mesh = sync.MeshColliderObject;
         if (EditorUtility.IsPersistent(mesh) || EditorUtility.IsPersistent(sync.GaussianRenderer))
         {
-            Debug.LogWarning("[MapColliderSync] Match scene objects or objects opened in Prefab Mode, not prefab assets.", sync);
+            TriffidLog.Warning("MapColliderSync", "Match scene objects or objects opened in Prefab Mode, not prefab assets.", sync);
             return;
         }
         Undo.SetTransformParent(mesh, sync.GaussianRenderer, "Match Gaussian Renderer");

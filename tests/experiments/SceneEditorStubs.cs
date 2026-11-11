@@ -100,6 +100,9 @@ namespace UnityEngine
         public static Exception LastException;
         public static Logger unityLogger=new Logger();
         public static void Log(object value) { }
+        public static void Log(object value, Object context) { }
+        public static void LogWarning(object value, Object context) { }
+        public static void LogError(object value, Object context) { }
         public static void LogException(Exception error) { LastException = error; }
     }
 }

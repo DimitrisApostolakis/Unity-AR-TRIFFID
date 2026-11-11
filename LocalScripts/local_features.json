@@ -163,25 +163,25 @@
     }
   ],
   "observer_status": {
-    "last_update": "2026-09-18 01:43:41",
+    "last_update": "2026-11-11 16:17:04",
     "fe_updated": 0,
     "mobile_updated": 0,
-    "ar_updated": 0
+    "ar_updated": 1
   },
   "mqtt_latest": {
     "message": {
       "header": {
         "stamp": {
-          "sec": 772,
-          "nanosec": 63000000
+          "sec": 1794406732,
+          "nanosec": 162981033
         },
         "frame_id": "b2/base_link"
       },
       "roll": 0.0,
       "pitch": 0.0,
       "yaw": 0.0,
-      "latitude": 37.9603098916767,
-      "longitude": 23.708289295677133,
+      "latitude": 37.96090989167689,
+      "longitude": 23.709489295677088,
       "battery_temperature": 0,
       "power_voltage": 0,
       "power_current": 0,
@@ -193,16 +193,16 @@
       "action_command": "{}"
     },
     "topic": "/b2/ugv_status_from_ros2",
-    "time": "2026-09-18 01:04:20",
+    "time": "2026-11-11 16:18:52",
     "motion": {
-      "enabled": false,
-      "start_after_sec": 0.0,
-      "start_at_epoch": 0.0,
+      "enabled": true,
+      "start_after_sec": 5.0,
+      "start_at_epoch": 1794406670.2452948,
       "interval_sec": 1.0,
       "lat_step": 1e-05,
-      "lon_step": 1e-05,
+      "lon_step": 2e-05,
       "yaw_step": 0.0,
-      "last_step_epoch": 0.0
+      "last_step_epoch": 1794406732.162981
     }
   }
 }

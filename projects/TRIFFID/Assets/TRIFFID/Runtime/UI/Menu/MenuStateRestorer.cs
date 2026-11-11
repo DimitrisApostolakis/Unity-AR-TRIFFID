@@ -55,14 +55,14 @@ public class MenuStateRestorer : MonoBehaviour
     private void ValidateConfiguration()
     {
         if (menuContentCanvas == null)
-            Debug.LogError("[MenuStateRestorer] Main menu canvas is missing; panel navigation cannot run.", this);
+            TriffidLog.Error("MenuStateRestorer", "Main menu canvas is missing; panel navigation cannot run.", this);
 
         if (closeButton == null)
-            Debug.LogWarning("[MenuStateRestorer] Close button is missing; close-button visibility cannot be synchronized.", this);
+            TriffidLog.Warning("MenuStateRestorer", "Close button is missing; close-button visibility cannot be synchronized.", this);
 
         if (panelRoutes == null || panelRoutes.Length == 0)
         {
-            Debug.LogError("[MenuStateRestorer] Panel route table is empty; routed menu navigation cannot run.", this);
+            TriffidLog.Error("MenuStateRestorer", "Panel route table is empty; routed menu navigation cannot run.", this);
         }
         else
         {
@@ -74,30 +74,30 @@ public class MenuStateRestorer : MonoBehaviour
             {
                 PanelRoute route = panelRoutes[i];
                 if (route == null || route.panel == null)
-                    Debug.LogWarning($"[MenuStateRestorer] Panel route {i} has no target panel.", this);
+                    TriffidLog.Warning("MenuStateRestorer", $"Panel route {i} has no target panel.", this);
             }
         }
 
         if (enableBridgeAutoOpenClose)
         {
             if (inputBridge == null)
-                Debug.LogError("[MenuStateRestorer] Input bridge is missing while bridge auto-open/close is enabled.", this);
+                TriffidLog.Error("MenuStateRestorer", "Input bridge is missing while bridge auto-open/close is enabled.", this);
 
             if (handDetectedSignal == BridgeSignal.None)
-                Debug.LogWarning("[MenuStateRestorer] Hand-detected signal is None; automatic menu opening will not be triggered.", this);
+                TriffidLog.Warning("MenuStateRestorer", "Hand-detected signal is None; automatic menu opening will not be triggered.", this);
 
             if (handLostSignal == BridgeSignal.None)
-                Debug.LogWarning("[MenuStateRestorer] Hand-lost signal is None; automatic menu closing will not be triggered.", this);
+                TriffidLog.Warning("MenuStateRestorer", "Hand-lost signal is None; automatic menu closing will not be triggered.", this);
         }
 
         if (menuButtonController == null)
-            Debug.LogWarning("[MenuStateRestorer] MenuButtonController is missing; Draw-mode navigation guard is unavailable.", this);
+            TriffidLog.Warning("MenuStateRestorer", "MenuButtonController is missing; Draw-mode navigation guard is unavailable.", this);
     }
 
     private void ValidateRouteIndex(string fieldName, int index)
     {
         if (index < 0 || index >= panelRoutes.Length)
-            Debug.LogError($"[MenuStateRestorer] {fieldName} {index} is outside panelRoutes length {panelRoutes.Length}.", this);
+            TriffidLog.Error("MenuStateRestorer", $"{fieldName} {index} is outside panelRoutes length {panelRoutes.Length}.", this);
     }
 
     private void OnEnable()

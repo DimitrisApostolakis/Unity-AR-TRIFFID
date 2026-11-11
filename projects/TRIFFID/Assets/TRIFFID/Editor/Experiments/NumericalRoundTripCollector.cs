@@ -114,7 +114,7 @@ public static class NumericalRoundTripCollector
         try
         {
             int count = Run(directory, "Unity Editor " + Application.unityVersion, Path.Combine(Application.dataPath, "TRIFFID/Runtime/Geospatial/Coordinates/GeoUtils.cs"));
-            Debug.Log("[NumericalRoundTrip] Collected " + count + " samples using native Unity vectors. Analyze with: python LocalScripts/run_numerical_roundtrip.py --analyze-run \"" + directory + "\"");
+            TriffidLog.Info("NumericalRoundTrip", "Collected " + count + " samples using native Unity vectors. Analyze with: python LocalScripts/run_numerical_roundtrip.py --analyze-run \"" + directory + "\"");
         }
         catch (Exception error) { Debug.LogException(error); }
     }

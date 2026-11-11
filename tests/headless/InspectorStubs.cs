@@ -5,7 +5,7 @@ namespace UnityEngine
 {
     public class Object { }
     public class Transform : Object { }
-    public static class Debug { public static void LogWarning(string text, Object context) { } }
+    public static class Debug { public static void Log(object text, Object context) { } public static void LogWarning(object text, Object context) { } public static void LogError(object text, Object context) { } }
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class HeaderAttribute : Attribute { public readonly string header; public HeaderAttribute(string text) { header=text; } }
     public class GUIContent { public GUIContent(string text) { } }

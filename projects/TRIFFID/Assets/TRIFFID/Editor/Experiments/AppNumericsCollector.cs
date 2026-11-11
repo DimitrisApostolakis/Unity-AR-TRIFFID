@@ -27,7 +27,7 @@ public static class AppNumericsCollector
             string folder = EditorUtility.OpenFolderPanel("Choose a parent folder for the numerical capture", "", "");
             if (string.IsNullOrEmpty(folder)) return;
             string capture = Run(folder, source);
-            Debug.Log("[AppNumerics] Native batch completed. Retain failures and stress limitations. Capture: " + capture);
+            TriffidLog.Info("AppNumerics", "Native batch completed. Retain failures and stress limitations. Capture: " + capture);
             EditorUtility.RevealInFinder(capture);
         }
         catch (Exception error) { Debug.LogException(error); }

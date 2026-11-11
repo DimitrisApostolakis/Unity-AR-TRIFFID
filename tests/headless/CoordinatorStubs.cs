@@ -28,7 +28,12 @@ namespace UnityEngine
     public sealed class ContextMenu : Attribute { public ContextMenu(string s) { } }
     public static class Mathf { public static float Max(float a,float b) { return Math.Max(a,b); } }
     public static class Time { public static float realtimeSinceStartup; }
-    public static class Debug { public static void Log(object s) { } public static void LogWarning(object s) { } }
+    public class Object { }
+    public static class Debug
+    {
+        public static void Log(object s) { } public static void LogWarning(object s) { }
+        public static void Log(object s, Object context) { } public static void LogWarning(object s, Object context) { } public static void LogError(object s, Object context) { }
+    }
     public sealed class WaitForSecondsRealtime { public WaitForSecondsRealtime(float seconds) { } }
 }
 

@@ -68,7 +68,7 @@ public class MapColliderSync : MonoBehaviour
         if (!enabled) return;
         if (!TryValidateSetup(out string error))
         {
-            if (lastWarning != error) Debug.LogWarning("[MapColliderSync] " + error, this);
+            if (lastWarning != error) TriffidLog.Warning("MapColliderSync", error, this);
             lastWarning = error;
             return;
         }
