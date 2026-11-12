@@ -3,69 +3,94 @@
   "features": [
     {
       "type": "Feature",
-      "id": "feature_262e61b6a0ee4e258006fb14304a74b5",
+      "id": "feature_a41e610f455d4e61b98e18b75d25345d",
       "properties": {
-        "class": "citizen",
-        "id": "feature_262e61b6a0ee4e258006fb14304a74b5",
-        "confidence": 1.0,
-        "category": "citizen",
-        "source": "ground station",
-        "altitude_m": 96.12451,
-        "height_above_surface_m": 10.279397,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.70826527820541,
-          37.96129135088205,
-          96.12450863234699
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_c43c0a328eb243aaa49976648fca4cc6",
-      "properties": {
-        "class": "animal",
-        "id": "feature_c43c0a328eb243aaa49976648fca4cc6",
-        "confidence": 1.0,
-        "category": "animal",
-        "source": "ground station",
-        "altitude_m": 83.05541,
-        "height_above_surface_m": 6.43357658,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.70801925144926,
-          37.96084194499311,
-          83.05541510134935
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_52344fd4f1614a29b8728be2471047d7",
-      "properties": {
-        "class": "safe",
-        "id": "feature_52344fd4f1614a29b8728be2471047d7",
+        "class": "ugv_path",
+        "id": "feature_a41e610f455d4e61b98e18b75d25345d",
         "confidence": 1.0,
         "category": "navigation",
-        "source": "ground station",
-        "altitude_m": 98.8389053,
+        "source": "Ground Station",
+        "altitude_m": 78.46309,
+        "heights_above_surface_m": [
+          6.435071646235883,
+          5.625041873194277,
+          6.198236897587776
+        ],
+        "heightSources": [
+          "mesh",
+          "mesh",
+          "mesh"
+        ],
+        "heightStatuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "ar_client_id": "feature_a41e610f455d4e61b98e18b75d25345d",
+        "timestamp": "2026-11-12T19:10:26.274Z",
+        "marker-color": "#38E0FF"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            23.708163608871917,
+            37.960232160526594,
+            78.4630890218541
+          ],
+          [
+            23.708729559875753,
+            37.96059233054696,
+            80.26619516965002
+          ],
+          [
+            23.70928927011129,
+            37.96100418416203,
+            81.07519993465394
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "feature_73d099ca53bd4f549494021c9312a64d",
+      "properties": {
+        "class": "unsafe",
+        "id": "feature_73d099ca53bd4f549494021c9312a64d",
+        "confidence": 1.0,
+        "category": "navigation",
+        "source": "Ground Station",
+        "altitude_m": 82.18893,
         "heights_above_surface_m": [
           [
-            6.537453121505678,
-            null,
-            14.475197707302868,
-            3.3521724240854383,
-            6.537453121505678
+            6.438576953485608,
+            17.144274250604212,
+            15.439871247857809,
+            4.045378424227238,
+            6.438576953485608
           ]
         ],
-        "marker-color": "#0000ff",
-        "fill": "#0000ff",
+        "heightSources": [
+          [
+            "mesh",
+            "mesh",
+            "mesh",
+            "mesh",
+            "mesh"
+          ]
+        ],
+        "heightStatuses": [
+          [
+            "ok",
+            "ok",
+            "ok",
+            "ok",
+            "ok"
+          ]
+        ],
+        "ar_client_id": "feature_73d099ca53bd4f549494021c9312a64d",
+        "marker-color": "#FF5C4C",
+        "fill": "#FF5C4C",
         "fill-opacity": 0.25
       },
       "geometry": {
@@ -73,97 +98,37 @@
         "coordinates": [
           [
             [
-              23.706691902882586,
-              37.96114135046462,
-              98.83890574425459
+              23.708751976321267,
+              37.962359164256476,
+              82.18892504554242
             ],
             [
-              23.7078356649915,
-              37.960165270971075,
-              83.73385028261691
+              23.706654380223597,
+              37.96122618629803,
+              93.82211698777974
             ],
             [
-              23.709534555157305,
-              37.96142870403602,
-              89.16707015130669
+              23.707790706731455,
+              37.96025311764775,
+              89.4167515207082
             ],
             [
-              23.708582730603773,
-              37.96231329941828,
-              84.76787103526294
+              23.709882254614538,
+              37.96144599372452,
+              80.15793037693948
             ],
             [
-              23.706691902882586,
-              37.96114135046462,
-              98.83890574425459
+              23.708751976321267,
+              37.962359164256476,
+              82.18892504554242
             ]
           ]
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_b0c31acfc59244d398d7cc9f86a7e49e",
-      "properties": {
-        "class": "road",
-        "id": "feature_b0c31acfc59244d398d7cc9f86a7e49e",
-        "confidence": 1.0,
-        "category": "navigation",
-        "source": "ground station",
-        "altitude_m": 79.56011,
-        "heights_above_surface_m": [
-          3.476804475300014,
-          6.334575278684497,
-          3.8021688926965
-        ],
-        "marker-color": "#ffeb04"
-      },
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            23.707919253819004,
-            37.96003927563112,
-            79.19853971060365
-          ],
-          [
-            23.70882241994364,
-            37.96066515573308,
-            80.80096239689738
-          ],
-          [
-            23.709684681904793,
-            37.96123191532872,
-            79.56010943371803
-          ]
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "feature_6b8193f6ef664054a20312bf9c7d54a9",
-      "properties": {
-        "class": "barrier",
-        "id": "feature_6b8193f6ef664054a20312bf9c7d54a9",
-        "confidence": 1.0,
-        "category": "barrier",
-        "source": "ground station",
-        "altitude_m": 80.08369,
-        "height_above_surface_m": 51.6732521,
-        "marker-color": "#ff0000"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          23.708714061889957,
-          37.960896658079285,
-          80.08368591405451
         ]
       }
     }
   ],
   "observer_status": {
-    "last_update": "2026-11-11 16:17:04",
+    "last_update": "2026-11-12 21:40:44",
     "fe_updated": 0,
     "mobile_updated": 0,
     "ar_updated": 1
@@ -172,16 +137,16 @@
     "message": {
       "header": {
         "stamp": {
-          "sec": 1794406732,
-          "nanosec": 162981033
+          "sec": 1794512533,
+          "nanosec": 113724231
         },
         "frame_id": "b2/base_link"
       },
       "roll": 0.0,
       "pitch": 0.0,
       "yaw": 0.0,
-      "latitude": 37.96090989167689,
-      "longitude": 23.709489295677088,
+      "latitude": 37.96210989167727,
+      "longitude": 23.711889295676997,
       "battery_temperature": 0,
       "power_voltage": 0,
       "power_current": 0,
@@ -193,16 +158,16 @@
       "action_command": "{}"
     },
     "topic": "/b2/ugv_status_from_ros2",
-    "time": "2026-11-11 16:18:52",
+    "time": "2026-11-12 21:42:13",
     "motion": {
       "enabled": true,
       "start_after_sec": 5.0,
-      "start_at_epoch": 1794406670.2452948,
+      "start_at_epoch": 1794512345.3331368,
       "interval_sec": 1.0,
       "lat_step": 1e-05,
       "lon_step": 2e-05,
       "yaw_step": 0.0,
-      "last_step_epoch": 1794406732.162981
+      "last_step_epoch": 1794512533.1137242
     }
   }
 }

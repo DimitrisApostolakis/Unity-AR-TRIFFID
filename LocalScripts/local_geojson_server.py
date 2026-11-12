@@ -8,6 +8,8 @@ Endpoints:
 - PUT    /wp-json/map-manager/v1/features
 - PATCH  /wp-json/map-manager/v1/features/{id}
 - DELETE /wp-json/map-manager/v1/features/{id}
+- GET    /wp-json/mqtt/v1/thresholds, /wp-json/mqtt/v1/alerts
+  (UGV sensor alerts; see local_sensor_alerts.py for how to record one)
 
 Test mode:
 - Use --rewrite-create-ids to simulate a backend that assigns a different
@@ -25,7 +27,9 @@ import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
+
+from local_sensor_alerts import ALERTS_BASE, THRESHOLDS_BASE, SensorAlertStore, default_store_path
 
 API_BASE = "/wp-json/map-manager/v1/features"
 STATUS_BASE = "/wp-json/observer-sync/v1/status"
@@ -571,9 +575,22 @@ class Handler(BaseHTTPRequestHandler):
     audit_log: Optional[str] = None
     audit_lock = threading.Lock()
     store: GeoJsonStore = None
+    sensor_alerts: SensorAlertStore = None
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
+        if path == THRESHOLDS_BASE:
+            self._json(200, self.sensor_alerts.thresholds())
+            return
+
+        if path == ALERTS_BASE:
+            query = parse_qs(urlparse(self.path).query)
+            self._json(200, self.sensor_alerts.page(
+                (query.get("sensor") or [None])[0],
+                self._int((query.get("limit") or [""])[0], 50),
+                self._int((query.get("page") or [""])[0], 1)))
+            return
+
         if path == STATUS_BASE:
             self._json(200, self.store.get_status())
             return
@@ -587,6 +604,36 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._json(200, self.store.get_all())
+
+    # Local test helpers for the UGV sensor alerts.
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path
+        if path not in (ALERTS_BASE, THRESHOLDS_BASE):
+            self._json(404, {"error": "Not found"})
+            return
+
+        body = self._read_json_body()
+        if body is None or not isinstance(body, dict):
+            self._json(400, {"error": "Invalid JSON body"})
+            return
+
+        if path == THRESHOLDS_BASE:
+            self._json(200, self.sensor_alerts.set_thresholds(body))
+            return
+
+        alert = self.sensor_alerts.add(body)
+        if alert is None:
+            self._json(400, {"error": "'sensor' is required, and 'value' for a sensor without a limit"})
+            return
+
+        self._json(200, alert)
+
+    @staticmethod
+    def _int(text: str, fallback: int) -> int:
+        try:
+            return int(text)
+        except ValueError:
+            return fallback
 
     def do_PUT(self) -> None:
         path = urlparse(self.path).path
@@ -720,6 +767,8 @@ def main() -> int:
     parser.add_argument("--db",
                         default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_features.json"),
                         help="Path to JSON db file (defaults to LocalScripts/local_features.json)")
+    parser.add_argument("--sensor-db", default=default_store_path(),
+                        help="Path to the UGV sensor alert file (defaults to LocalScripts/local_sensor_alerts.json)")
     parser.add_argument("--audit-log", help="Optional JSONL request log for the offline sync test")
     parser.add_argument("--lat", type=float, default=37.9603098916767, help="Initial MQTT latitude")
     parser.add_argument("--lon", type=float, default=23.708289295677133, help="Initial MQTT longitude")
@@ -759,6 +808,7 @@ def main() -> int:
             store._write(db)
 
     Handler.store = store
+    Handler.sensor_alerts = SensorAlertStore(os.path.abspath(args.sensor_db))
     Handler.audit_log = os.path.abspath(args.audit_log) if args.audit_log else None
     if Handler.audit_log:
         os.makedirs(os.path.dirname(Handler.audit_log), exist_ok=True)
@@ -766,6 +816,7 @@ def main() -> int:
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Local GeoJSON API running on http://{args.host}:{args.port}{API_BASE}")
     print(f"Local Observer Status API on http://{args.host}:{args.port}{STATUS_BASE}")
+    print(f"Local UGV sensor alerts on http://{args.host}:{args.port}{ALERTS_BASE}")
     print(f"DB file: {db_path}")
     if args.rewrite_create_ids:
         print("Create ID rewrite test mode: ENABLED")

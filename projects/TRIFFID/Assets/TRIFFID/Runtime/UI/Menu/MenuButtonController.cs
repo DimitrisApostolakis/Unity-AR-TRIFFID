@@ -334,13 +334,19 @@ public class MenuButtonController : MonoBehaviour
     {
         yield return null;
 
+        // Walk has ended whatever else is open. Leaving it set would send the
+        // menu back to Walk, with the map still locked, when Info or Draw closes.
+        walkModeActive = false;
+
         if (currentState == MenuState.Info || currentState == MenuState.Draw)
         {
+            // The open mode keeps its annotation colliders; apply it again so
+            // its buttons no longer follow the Walk rules.
+            TransitionToState(currentState);
             walkUntoggleRoutine = null;
             yield break;
         }
 
-        walkModeActive = false;
         SetAnnotationColliders(false);
 
         if (currentState == MenuState.Walk)

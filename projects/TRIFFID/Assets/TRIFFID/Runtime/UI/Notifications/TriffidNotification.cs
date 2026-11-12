@@ -1,22 +1,44 @@
 using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+
+public enum NotificationKind
+{
+    Error,
+    Success,
+    Warning
+}
 
 // A short message card that appears in front of the user and removes itself.
 //
 //   TriffidNotification.ShowError("Polygon lines cross. Move or undo a vertex.");
 //   TriffidNotification.ShowError("Aim at the map to place a point.", "No surface");
 //   TriffidNotification.ShowSuccess("Connected to the server.", "Online");
+//   TriffidNotification.ShowWarning("Battery is low.", "UGV");
+//   TriffidNotification.ShowQuiet(NotificationKind.Warning, "31.5 C, limit 29 C", "Temperature alert");
 //
-// An error is red with a "!" and shakes as it arrives; a success is green with
-// a tick and does not shake. Both use the same card.
+// An error is red with a "!" and shakes as it arrives; a warning is amber with
+// a "!"; a success is green with a tick. All use the same card.
 //
-// The card is the prefab "TRIFFID Notification" in a Resources folder. It is
-// created the first time a message is shown and reused afterwards; a new
-// message while one is visible replaces the text and restarts the timer.
-// Layout, colours and fonts are edited on the prefab; timing and placement are
-// the fields below.
+// A quiet message is for news the user should be able to see without being
+// interrupted: the card is smaller, sits low and to the side of the view and
+// never shakes.
+//
+// Only one card is visible at a time. A message that arrives while another
+// is shown waits its turn, so two cards never cover each other:
+// - messages are shown in the order they arrive, normal ones before quiet ones;
+// - a normal message does not wait behind a quiet one: the quiet card steps
+//   aside at once and is shown again afterwards;
+// - a message identical to the visible one only restarts its timer, and one
+//   identical to a waiting message is not added again, so a repeated error
+//   never builds up a line of copies.
+//
+// The card is the prefab "TRIFFID Notification" in a Resources folder. One
+// copy per placement is created the first time it is needed and reused
+// afterwards. Layout, colours and fonts are edited on the prefab; timing,
+// placement and the length of the waiting line are the fields below.
 [DisallowMultipleComponent]
 public class TriffidNotification : MonoBehaviour
 {
@@ -38,10 +60,16 @@ public class TriffidNotification : MonoBehaviour
     [SerializeField] private Graphic[] tinted;
     [SerializeField] private Color errorColor = new Color(1f, 0.33f, 0.33f);
     [SerializeField] private Color successColor = new Color(0.29f, 0.87f, 0.50f);
-    [Tooltip("Shown inside the icon disc for an error.")]
+    [SerializeField] private Color warningColor = new Color(1.00f, 0.77f, 0.24f);
+    [Tooltip("Shown inside the icon disc for an error or a warning.")]
     [SerializeField] private GameObject errorMark;
     [Tooltip("Shown inside the icon disc for a success.")]
     [SerializeField] private GameObject successMark;
+
+    [Header("Waiting Line")]
+    [Min(1)]
+    [Tooltip("Most messages that may wait behind the visible one. When more arrive, the oldest waiting quiet message is dropped.")]
+    [SerializeField] private int maxWaiting = 6;
 
     [Header("Timing (seconds)")]
     [Min(0.5f)]
@@ -68,60 +96,253 @@ public class TriffidNotification : MonoBehaviour
     [Tooltip("How quickly the card follows the head. Zero keeps it where it appeared.")]
     [SerializeField] private float followSpeed = 5f;
 
+    [Header("Quiet Placement")]
+    [Min(0.2f)]
+    [Tooltip("Metres in front of the head.")]
+    [SerializeField] private float quietDistance = 0.75f;
+    [Tooltip("Metres to the right (positive) or left (negative) of the line of sight.")]
+    [SerializeField] private float quietSideOffset = 0.2f;
+    [Tooltip("Metres above (positive) or below (negative) the line of sight.")]
+    [SerializeField] private float quietHeightOffset = -0.2f;
+    [Range(0.2f, 1f)]
+    [Tooltip("Size of a quiet card relative to a normal one.")]
+    [SerializeField] private float quietScale = 0.7f;
+    [Min(0f)]
+    [Tooltip("How quickly a quiet card follows the head. Lower drifts more gently.")]
+    [SerializeField] private float quietFollowSpeed = 2.5f;
+    [Min(0.5f)]
+    [Tooltip("Shortest time a quiet message stays; it is off to the side, so it gets longer than a normal one.")]
+    [SerializeField] private float quietMinimumSeconds = 6f;
+
     [Header("Motion")]
     [Tooltip("Sideways shake of the card when an error arrives, in canvas units.")]
     [SerializeField] private float shakeAmount = 5f;
     [Tooltip("Canvas units the card drifts upward while it vanishes.")]
     [SerializeField] private float vanishRise = 10f;
 
-    private static TriffidNotification instance;
+    private sealed class Request
+    {
+        public NotificationKind kind;
+        public string title;
+        public string message;
+        public bool quiet;
+
+        public bool SameAs(Request other)
+        {
+            return other != null && kind == other.kind && quiet == other.quiet && title == other.title && message == other.message;
+        }
+    }
+
+    // One card per placement: [0] in the line of sight, [1] quiet.
+    private static readonly TriffidNotification[] instances = new TriffidNotification[2];
+    // Messages not shown yet: normal ones first, then quiet ones, each in arrival order.
+    private static readonly List<Request> waiting = new List<Request>();
+    private static Request showing;
+    private static TriffidNotification showingCard;
     private static bool missingPrefabLogged;
 
     private Coroutine routine;
     private float shakeNow;
     private Vector2 cardRestPosition;
     private bool restPositionKnown;
+    private bool quiet;
 
-    // Both return false only when the prefab is missing, so a caller can fall back.
+    // Play sessions in the Editor can keep statics alive; start each one fresh.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics()
+    {
+        waiting.Clear();
+        showing = null;
+        showingCard = null;
+    }
+
+    // All return false only when the prefab is missing, so a caller can fall back.
     public static bool ShowError(string message, string title = "Error")
     {
-        return Show(message, title, false);
+        return Show(NotificationKind.Error, message, title, false);
     }
 
     public static bool ShowSuccess(string message, string title = "Done")
     {
-        return Show(message, title, true);
+        return Show(NotificationKind.Success, message, title, false);
     }
 
-    private static bool Show(string message, string title, bool success)
+    public static bool ShowWarning(string message, string title = "Warning")
+    {
+        return Show(NotificationKind.Warning, message, title, false);
+    }
+
+    // Small, to the side, no shake. See the notes at the top of this file.
+    public static bool ShowQuiet(NotificationKind kind, string message, string title = null)
+    {
+        return Show(kind, message, title, true);
+    }
+
+    public static bool Show(NotificationKind kind, string message, string title, bool quiet)
     {
         if (string.IsNullOrWhiteSpace(message) || !Application.isPlaying)
             return false;
 
-        if (instance == null)
-        {
-            TriffidNotification prefab = Resources.Load<TriffidNotification>(ResourceName);
-            if (prefab == null)
-            {
-                if (!missingPrefabLogged)
-                {
-                    missingPrefabLogged = true;
-                    TriffidLog.Warning("TriffidNotification", "Prefab '" + ResourceName + "' was not found in a Resources folder; notifications are not shown.");
-                }
-                return false;
-            }
+        TriffidNotification card = CardFor(quiet);
+        if (card == null)
+            return false;
 
-            instance = Instantiate(prefab);
-            instance.name = ResourceName;
+        Request request = new Request
+        {
+            kind = kind,
+            title = string.IsNullOrWhiteSpace(title) ? null : title.Trim(),
+            message = message.Trim(),
+            quiet = quiet
+        };
+
+        // A card hidden from outside leaves nothing on show.
+        bool busy = showingCard != null && showingCard.routine != null;
+        if (!busy)
+        {
+            showing = null;
+            showingCard = null;
         }
 
-        instance.Present(title, message.Trim(), success);
+        if (busy && request.SameAs(showing))
+        {
+            showingCard.Present(request);
+            return true;
+        }
+
+        foreach (Request other in waiting)
+            if (request.SameAs(other))
+                return true;
+
+        if (busy && !request.quiet && showing.quiet)
+        {
+            // The quiet card steps aside and comes back after the normal ones.
+            Request interrupted = showing;
+            showingCard.HideNow();
+            AddToWaiting(request, card.maxWaiting);
+            waiting.Insert(NormalWaitingCount(), interrupted);
+            ShowNext();
+            return true;
+        }
+
+        AddToWaiting(request, card.maxWaiting);
+        if (!busy)
+            ShowNext();
         return true;
     }
 
-    private void Present(string title, string message, bool success)
+    private static int NormalWaitingCount()
     {
-        Color kindColor = success ? successColor : errorColor;
+        int count = 0;
+        while (count < waiting.Count && !waiting[count].quiet)
+            count++;
+        return count;
+    }
+
+    private static void AddToWaiting(Request request, int limit)
+    {
+        if (request.quiet)
+            waiting.Add(request);
+        else
+            waiting.Insert(NormalWaitingCount(), request);
+
+        // Too many: the oldest quiet message goes first, then the oldest of all.
+        while (waiting.Count > Mathf.Max(1, limit))
+        {
+            int normal = NormalWaitingCount();
+            waiting.RemoveAt(normal < waiting.Count ? normal : 0);
+        }
+    }
+
+    private static void ShowNext()
+    {
+        showing = null;
+        showingCard = null;
+
+        while (waiting.Count > 0)
+        {
+            Request next = waiting[0];
+            waiting.RemoveAt(0);
+
+            TriffidNotification card = CardFor(next.quiet);
+            if (card == null)
+                continue;
+
+            showing = next;
+            showingCard = card;
+            card.Present(next);
+            return;
+        }
+    }
+
+    // The card of one placement, created on first use. Null when the prefab is missing.
+    private static TriffidNotification CardFor(bool quiet)
+    {
+        int slot = quiet ? 1 : 0;
+        TriffidNotification instance = instances[slot];
+        if (instance != null)
+            return instance;
+
+        TriffidNotification prefab = Resources.Load<TriffidNotification>(ResourceName);
+        if (prefab == null)
+        {
+            if (!missingPrefabLogged)
+            {
+                missingPrefabLogged = true;
+                TriffidLog.Warning("TriffidNotification", "Prefab '" + ResourceName + "' was not found in a Resources folder; notifications are not shown.");
+            }
+            return null;
+        }
+
+        // Created hidden, so a card that has to wait never flashes up.
+        instance = Instantiate(prefab);
+        instance.name = quiet ? ResourceName + " (Quiet)" : ResourceName;
+        instance.quiet = quiet;
+        if (quiet)
+            instance.transform.localScale *= instance.quietScale;
+        instance.gameObject.SetActive(false);
+        instances[slot] = instance;
+        return instance;
+    }
+
+    // Removes the card without its vanish animation.
+    private void HideNow()
+    {
+        if (routine != null)
+        {
+            StopCoroutine(routine);
+            routine = null;
+        }
+        gameObject.SetActive(false);
+    }
+
+    private Color ColorOf(NotificationKind kind)
+    {
+        switch (kind)
+        {
+            case NotificationKind.Success: return successColor;
+            case NotificationKind.Warning: return warningColor;
+            default: return errorColor;
+        }
+    }
+
+    private static string DefaultTitle(NotificationKind kind)
+    {
+        switch (kind)
+        {
+            case NotificationKind.Success: return "DONE";
+            case NotificationKind.Warning: return "WARNING";
+            default: return "ERROR";
+        }
+    }
+
+    private void Present(Request request)
+    {
+        NotificationKind kind = request.kind;
+        string title = request.title;
+        string message = request.message;
+
+        bool success = kind == NotificationKind.Success;
+        Color kindColor = ColorOf(kind);
         if (tinted != null)
         {
             foreach (Graphic graphic in tinted)
@@ -133,9 +354,9 @@ public class TriffidNotification : MonoBehaviour
         }
         if (errorMark != null) errorMark.SetActive(!success);
         if (successMark != null) successMark.SetActive(success);
-        shakeNow = success ? 0f : shakeAmount;
+        shakeNow = kind == NotificationKind.Error && !quiet ? shakeAmount : 0f;
 
-        if (titleText != null) titleText.text = string.IsNullOrWhiteSpace(title) ? (success ? "DONE" : "ERROR") : title.Trim().ToUpperInvariant();
+        if (titleText != null) titleText.text = title == null ? DefaultTitle(kind) : title.ToUpperInvariant();
         if (messageText != null) messageText.text = message;
 
         if (card != null && !restPositionKnown)
@@ -150,11 +371,13 @@ public class TriffidNotification : MonoBehaviour
             PlaceInFrontOfHead(true);
 
         if (routine != null) StopCoroutine(routine);
-        float seconds = Mathf.Clamp(minimumSeconds + message.Length * secondsPerCharacter, minimumSeconds, Mathf.Max(minimumSeconds, maximumSeconds));
-        routine = StartCoroutine(Run(seconds, alreadyVisible));
+        float shortest = quiet ? quietMinimumSeconds : minimumSeconds;
+        float seconds = Mathf.Clamp(shortest + message.Length * secondsPerCharacter, shortest, Mathf.Max(shortest, maximumSeconds));
+        // A quiet card slides in without the pop of a card that wants attention.
+        routine = StartCoroutine(Run(seconds, alreadyVisible || quiet, alreadyVisible));
     }
 
-    private IEnumerator Run(float visibleSeconds, bool alreadyVisible)
+    private IEnumerator Run(float visibleSeconds, bool gentle, bool alreadyVisible)
     {
         float startAlpha = alreadyVisible && canvasGroup != null ? canvasGroup.alpha : 0f;
         SetTimer(1f);
@@ -164,7 +387,7 @@ public class TriffidNotification : MonoBehaviour
         {
             float k = Mathf.Clamp01(t / appearSeconds);
             SetAlpha(Mathf.Lerp(startAlpha, 1f, k));
-            SetCard(Mathf.LerpUnclamped(alreadyVisible ? 0.94f : 0.8f, 1f, EaseOutBack(k)),
+            SetCard(Mathf.LerpUnclamped(gentle ? 0.94f : 0.8f, 1f, EaseOutBack(k)),
                 new Vector2(Mathf.Sin(k * Mathf.PI * 5f) * shakeNow * (1f - k), 0f));
             SetIcon(1f + 0.35f * Mathf.Sin(k * Mathf.PI));
             yield return null;
@@ -195,6 +418,9 @@ public class TriffidNotification : MonoBehaviour
         SetCard(1f, Vector2.zero);
         routine = null;
         gameObject.SetActive(false);
+
+        if (showingCard == this)
+            ShowNext();
     }
 
     private void LateUpdate()
@@ -216,7 +442,13 @@ public class TriffidNotification : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (instance == this) instance = null;
+        for (int i = 0; i < instances.Length; i++)
+            if (instances[i] == this) instances[i] = null;
+        if (showingCard == this)
+        {
+            showing = null;
+            showingCard = null;
+        }
     }
 
     private void PlaceInFrontOfHead(bool snap)
@@ -225,11 +457,14 @@ public class TriffidNotification : MonoBehaviour
         if (head == null) return;
 
         Transform eye = head.transform;
-        Vector3 target = eye.position + eye.forward * distance + eye.up * heightOffset;
+        Vector3 target = quiet
+            ? eye.position + eye.forward * quietDistance + eye.right * quietSideOffset + eye.up * quietHeightOffset
+            : eye.position + eye.forward * distance + eye.up * heightOffset;
+        float speed = quiet ? quietFollowSpeed : followSpeed;
         if (snap)
             transform.position = target;
-        else if (followSpeed > 0f)
-            transform.position = Vector3.Lerp(transform.position, target, 1f - Mathf.Exp(-followSpeed * Time.unscaledDeltaTime));
+        else if (speed > 0f)
+            transform.position = Vector3.Lerp(transform.position, target, 1f - Mathf.Exp(-speed * Time.unscaledDeltaTime));
 
         // A world-space canvas is readable from behind its forward axis.
         Vector3 away = transform.position - eye.position;

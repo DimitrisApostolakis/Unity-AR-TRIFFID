@@ -1,0 +1,69 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd87991cb7644c89a046284c3bf39a4e, type: 3}
+  m_Name: UgvSensorSettings
+  m_EditorClassIdentifier: 
+  sensorsEnabled: 1
+  showMenuStrip: 1
+  showAlertNotifications: 1
+  thresholdsUrl: https://crispres.com/wp-json/mqtt/v1/thresholds
+  alertsUrl: https://crispres.com/wp-json/mqtt/v1/alerts
+  useLocalServer: 1
+  localThresholdsUrl: http://127.0.0.1:8080/wp-json/mqtt/v1/thresholds
+  localAlertsUrl: http://127.0.0.1:8080/wp-json/mqtt/v1/alerts
+  pollSeconds: 5
+  thresholdRefreshSeconds: 60
+  alertsPerPoll: 50
+  requestTimeoutSeconds: 15
+  sensors:
+  - key: co2_eq
+    displayName: CO2
+    unit: ppm
+    displayScale: 1
+    decimals: 0
+  - key: temp
+    displayName: Temperature
+    unit: "\xB0C"
+    displayScale: 1
+    decimals: 1
+  - key: humidity
+    displayName: Humidity
+    unit: '%'
+    displayScale: 100
+    decimals: 2
+  - key: pressure
+    displayName: Pressure
+    unit: hPa
+    displayScale: 0.01
+    decimals: 2
+  activeAlertSeconds: 120
+  forgetAlertAfterHours: 0
+  normalColor: {r: 0.29, g: 0.87, b: 0.5, a: 1}
+  earlierColor: {r: 1, g: 0.77, b: 0.24, a: 1}
+  alertColor: {r: 1, g: 0.36, b: 0.3, a: 1}
+  unknownColor: {r: 0.62, g: 0.67, b: 0.7, a: 1}
+  quietAlertNotifications: 1
+  alertNotificationKind: 2
+  announceLatestOnFirstRun: 1
+  menuContainerName: Menu Origin
+  stripHeight: 22
+  stripGap: 3
+  stripDepthOffset: -2
+  cellSpacing: 2
+  keepMenuBottomEdge: 1
+  cellPlateColor: {r: 1, g: 1, b: 1, a: 0.06}
+  cellAccentWidth: 1.2
+  captionFontSize: 4.2
+  valueFontSize: 7
+  detailFontSize: 3.6
+  secondaryTextAlpha: 0.7
+  newAlertGlowSeconds: 2.5

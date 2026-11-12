@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -602,7 +603,10 @@ public partial class JsonSpawner
                 category   = lineCategory,
                 source     = source,
                 altitude_m = (float)firstAlt,
-                marker_color = colorHex
+                marker_color = colorHex,
+                timestamp  = isMissionPath
+                    ? DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture)
+                    : null
             },
             geometry = new Geometry { type = "LineString", coordinates = coords }
         };

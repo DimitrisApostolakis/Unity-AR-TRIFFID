@@ -100,7 +100,11 @@ public partial class JsonSpawner
                     feature.properties.heightStatuses, feature.geometry.coordinates, vertex, new JValue(data.heightStatus));
             }
         }
-        if (edited.parentCentroid != null) RecalculateCentroidForNode(edited);
+        if (edited.parentCentroid != null)
+        {
+            RecalculateCentroidForNode(edited);
+            SettlePolygonIcon(edited.parentCentroid);
+        }
         MarkDataDirty();
         return true;
     }

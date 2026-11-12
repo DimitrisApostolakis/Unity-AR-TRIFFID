@@ -401,9 +401,13 @@ public partial class JsonSpawner
             count++;
         }
 
-        if (count > 0)
-            return SpawnPointNode(sumLon / count, sumLat / count, originalToken, feature, color, true, null, false);
-        return null;
+        if (count == 0)
+            return null;
+
+        Transform icon = SpawnPointNode(sumLon / count, sumLat / count, originalToken, feature, color, true, null, false);
+        // An icon the user moved inside its polygon returns to that place.
+        RestorePolygonIcon(icon);
+        return icon;
     }
 
     private Transform SpawnPointNode(double lon, double lat, JArray token, Feature feature, Color fallbackColor, bool isCentroid, Transform customParent, bool isVertex, double? fallbackAltitude = null)
@@ -638,10 +642,12 @@ public partial class JsonSpawner
                 if (pointData != null)
                 {
                     pointData.lineColorHex = resolvedLineColorHex;
-                    // Route vertices keep their class so the panel can name the route.
-                    pointData.pointClass = MissionPaths.IsMissionPath(feature.properties?.className)
-                        ? feature.properties.className
-                        : "Drawing";
+                    // Route vertices and the corners of a Safe/Unsafe polygon keep
+                    // their class so the panel can name them; any other line is a drawing.
+                    string nodeClass = feature.properties?.className;
+                    bool namedClass = MissionPaths.IsMissionPath(nodeClass) ||
+                        (forceClosedLoop && XRControllerLogger.TryNormalizePolygonClass(nodeClass, out nodeClass));
+                    pointData.pointClass = namedClass ? nodeClass : "Drawing";
                     pointData.category = "Annotation";
                 }
 

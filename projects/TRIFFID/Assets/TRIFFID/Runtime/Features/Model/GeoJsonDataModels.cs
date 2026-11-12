@@ -27,6 +27,9 @@ public class Properties
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)] public string elevationStatus;
     [JsonProperty("ar_client_id", NullValueHandling = NullValueHandling.Ignore)] public string clientFeatureId;
 
+    // UTC creation time (ISO 8601), written on mission paths (UGV and responders).
+    [JsonProperty("timestamp", NullValueHandling = NullValueHandling.Ignore)] public string timestamp;
+
     [JsonProperty("marker-color", NullValueHandling = NullValueHandling.Ignore)]
     public string marker_color;
 

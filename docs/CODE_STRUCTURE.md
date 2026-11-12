@@ -16,6 +16,7 @@ No application assembly definitions, namespaces or component names were changed.
 | `Features/Persistence` | Atomic disk writes and durable edit state | `GeoJsonAtomicFile`, `GeoJsonSyncState` |
 | `Features/Sync` | HTTP requests, incoming parsing and synchronization | `GeoJsonApiManager`, `GeoJsonPayloadParser`, `GeoJsonSyncCoordinator` |
 | `Features/Spawning` | Existing JsonSpawner component and its focused implementations | `JsonSpawner` |
+| `Features/Sensors` | UGV environmental readings: settings, HTTP, parsing and the alert monitor | `UgvSensorSettings`, `UgvSensorMonitor`, `UgvSensorApi` |
 | `Features/Presentation` | Marker visuals, ground footprints, polygon fills, shared colours, events, data and category visibility | `FloatingIcon`, `MarkerFootprint`, `PolygonFill`, `SemanticPalette`, `PointData`, `GeoJsonVisibilityFilter` |
 | `Interaction/Annotations` | Runtime strokes and persistence adapter | `RuntimeLine`, `JsonSpawnerPersistenceAdapter` |
 | `Interaction/Input` | Controller/hand actions and menu interaction | `XRControllerLogger`, `XRControllerInputBridge` |
@@ -145,6 +146,81 @@ fade for a class that is switched off. It also orders the info panel action
 bar as Previous, Next, Delete. Targets are found by object name (`Checkbox`,
 `UIButtonSpriteIcon`, `Label`, `BtnPrev`, `BtnNext`, `BtnDelete`).
 
+## Notifications
+
+`TriffidNotification` shows one card from the prefab `TRIFFID Notification`
+in `Assets/TRIFFID/Resources`. There are three kinds (`ShowError`,
+`ShowWarning`, `ShowSuccess`) and two placements:
+
+- normal: in the line of sight; an error shakes as it arrives;
+- quiet (`ShowQuiet`): smaller, low and to the right, no shake.
+
+Only one card is visible at a time; the others wait in line and follow one by
+one, so cards never cover each other. Normal messages are shown before quiet
+ones, and a normal message makes a visible quiet card step aside (it returns
+afterwards). A message identical to the visible or to a waiting one is not
+added again. `maxWaiting` on the prefab limits the line.
+
+Every card vanishes when its timer runs out. Timing and both placements are
+fields on the prefab's component.
+
+## UGV sensor readings and alerts
+
+The API offers the limits (`/thresholds`) and the recorded alerts (`/alerts`)
+of four readings. It has no endpoint for the current value of a reading, so
+the app shows the last alert of each reading and how old it is.
+
+| Script | Responsibility |
+| --- | --- |
+| `UgvSensorSettings` | Asset `Resources/UgvSensorSettings.asset`: addresses, pace, the list of readings (key, name, unit, scale, decimals), levels, colours, card and strip options |
+| `UgvSensorApi` | The GET requests and their addresses |
+| `UgvSensorPayloadParser`, `UgvSensorAlert`, `UgvSensorState` | The two answers and the state kept per reading |
+| `UgvSensorMonitor` | Creates itself at Play, polls, raises `Changed` and `AlertsArrived` |
+| `UgvSensorText` | One way of writing values, limits, ages, times and positions |
+| `UgvSensorAlertNotice` (`UI/Notifications`) | Card for a new alert |
+| `UgvSensorMenuStrip` (`UI/Menu`) | Row of readings at the top of the main menu |
+
+- **New alerts are found by id.** The highest id seen is stored in
+  `PlayerPrefs`, so an alert recorded while the app was closed is announced at
+  the next start and none is announced twice. Alerts that arrive together
+  each get a card, oldest first, up to `maxAlertCardsPerCheck`; beyond that
+  only the newest are shown and the last card says `+N more`. The
+  console line names both ids: `New alert 159 (temp); the previous alert was 158.`
+  **Forget Last Seen Alert** in the monitor's context menu clears the stored id.
+- **Levels and colours:** green, no alert on record; red, an alert younger
+  than `activeAlertSeconds`; amber, an older alert; grey, no answer yet.
+- **The strip edits no prefab.** It finds `Menu Origin` by name, adds its
+  height to the top padding of that object's layout group and lifts the menu
+  by half of it, so the grab bar below stays in place.
+- **Testing without the real API:** switch on `useLocalServer` in the settings
+  asset, run `python LocalScripts/local_geojson_server.py`, press Play, then
+  record alerts with `python LocalScripts/local_sensor_alerts.py temp 31.5`
+  (`--list` shows what is recorded, `--no-gps` records one without a
+  position). The local alerts are kept in `LocalScripts/local_sensor_alerts.json`.
+  `python LocalScripts/demo_sensor_alerts.py` walks through every case (below
+  the limit, single, no GPS, several at once, repeated) and says what the app
+  should show at each step.
+  The last seen id is stored per address, so the real and the local server do
+  not disturb each other.
+- **Another reading** is one more entry in the settings list. **Another
+  listener** subscribes to the two monitor events; the monitor shows nothing
+  itself.
+
+## Polygon titles and polygon icons
+
+The corners of a Safe or Unsafe polygon keep the class `safe` / `unsafe`, both
+when drawn and when rebuilt from GeoJSON, so the info panel titles them
+`SAFE ZONE` / `UNSAFE ZONE`. Corners of any other line are classed `Drawing`
+and titled by colour.
+
+A polygon whose class has an icon prefab gets that icon at its centre. The
+icon can be dragged only within the polygon's outer outline
+(`JsonSpawner.KeepIconInsidePolygon`, called by `FloatingIcon` while held;
+geometry in `PolygonContainment`). It stays where it is dropped, and returns
+there after a refresh as long as that place is still inside. The place is
+kept for the session only: GeoJSON has no field for it, so nothing is saved or
+sent. Inner rings (holes) are not excluded.
+
 ## Walk mode and annotation colliders
 
 `MenuButtonController` keeps annotation colliders enabled for the whole of
@@ -227,6 +303,7 @@ into that same class; do not attach them as additional components.
 | `JsonSpawner.Surface.cs` | Surface placement, altitude and height metadata |
 | `JsonSpawner.Rendering.cs` | Geometry spawning, materials, cleanup, collider visibility and filters |
 | `JsonSpawner.Editing.cs` | Add/delete operations and runtime node registration |
+| `JsonSpawner.PolygonIcons.cs` | Keeps a dragged polygon icon inside its polygon and remembers where it was dropped |
 
 The extraction moves existing member bodies verbatim. It introduces no second
 save queue, refresh loop, coordinate system or runtime manager.

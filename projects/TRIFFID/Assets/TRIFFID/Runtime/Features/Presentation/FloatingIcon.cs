@@ -116,6 +116,8 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
     {
         if (!isBeingManipulated) return;
         bool edited = mySpawner != null && myPointData != null && mySpawner.SyncData(myPointData, transform);
+        // The icon of a polygon stays where it was dropped, inside the polygon.
+        if (mySpawner != null) mySpawner.PlaceIconInsidePolygon(transform);
         isBeingManipulated = false;
         manipulationDrivenByGrabSelectedFallback = false;
 
@@ -234,7 +236,11 @@ public class FloatingIcon : MonoBehaviour, IMarkerFocusable
     void LateUpdate()
     {
         if (isBeingManipulated)
+        {
+            // The icon of a polygon cannot be carried out of its polygon.
+            if (mySpawner != null) mySpawner.KeepIconInsidePolygon(transform);
             return;
+        }
 
         if (mainMap == null) return;
 
