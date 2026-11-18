@@ -17,7 +17,7 @@ MonoBehaviour:
   showAlertNotifications: 1
   thresholdsUrl: https://crispres.com/wp-json/mqtt/v1/thresholds
   alertsUrl: https://crispres.com/wp-json/mqtt/v1/alerts
-  useLocalServer: 1
+  useLocalServer: 0
   localThresholdsUrl: http://127.0.0.1:8080/wp-json/mqtt/v1/thresholds
   localAlertsUrl: http://127.0.0.1:8080/wp-json/mqtt/v1/alerts
   pollSeconds: 5
@@ -53,6 +53,7 @@ MonoBehaviour:
   unknownColor: {r: 0.62, g: 0.67, b: 0.7, a: 1}
   quietAlertNotifications: 1
   alertNotificationKind: 2
+  maxAlertCardsPerCheck: 3
   announceLatestOnFirstRun: 1
   menuContainerName: Menu Origin
   stripHeight: 22
